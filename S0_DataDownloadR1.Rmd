@@ -1,0 +1,263 @@
+---
+title: "Downloading US NHANES 2003-2004 and 2013-2014 data"
+author: "Water and Health Laboratory - Cyprus University of Technology"
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  word_document:
+    reference_docx: "template.docx"
+always_allow_html: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r S0-DataDownloadR1-1, include=FALSE}
+
+ipak <- function(pkg) {
+  new.pkg <- pkg[!(pkg %in% installed.packages()[, "Package"])]
+  if (length(new.pkg)) {
+    install.packages(new.pkg, dependencies = TRUE)
+  }
+  sapply(pkg, require, character.only = TRUE)
+}
+packages <- c("haven", "tidyverse", "janitor", "XML", "tictoc")
+
+ipak(packages)
+```
+
+# Downloading 2003-2004 data
+
+```{r S0-DataDownloadR1-2 }
+theme_xpt <- c(
+  # demographics
+  "DEMO_C.XPT",
+  # dietary
+  "DR1TOT_C.XPT",
+  # smoking data (household smoking)
+  "SMQFAM_C.XPT",
+  # diabetes data
+  "DIQ_C.XPT",
+  # Body Measurement data
+  "BMX_C.XPT",
+  # physical activity data
+  "PAQ_C.XPT",
+  ## Laboratory
+  # Load 2003-2004 Albumin data
+  "L16_C.XPT",
+  # Standard Biochemistry data
+  "L40_C.XPT",
+  # Completele Blood Count data
+  "L25_C.XPT",
+  # Cotinine data
+  "L06COT_C.XPT",
+  # Glycohemoglobin data
+  "L10_C.XPT",
+  # environmental phenols data
+  "L24EPH_C.XPT",
+  # Load phtalates urine data
+  "L24PH_C.XPT",
+  # Load arsenic data
+  "L06UAS_C.XPT",
+  #Load cadmium ,lead and mercury data
+  "L06BMT_C.XPT",
+  # Load iodine data
+  "L06UIO_C.XPT",
+  #Load mercury data
+  "L06UHG_C.XPT",
+  #Load perchlorate data
+  "L04PER_C.XPT",
+  # Load Polyaromatic Hydrocarbons (PAHs)
+  "L31PAH_C.XPT",
+  # Load Polyfluoroalkyl Chemicals data
+  "L24PFC_C.XPT"
+)
+```
+
+```{r S0-DataDownloadR1-3 }
+df_2003_2004 <- as.data.frame(theme_xpt) %>%
+  mutate(complete_urls = paste0("https://wwwn.cdc.gov/Nchs/Nhanes/2003-2004/", theme_xpt)) %>%
+  mutate(rds_name = paste0(str_replace_all(theme_xpt, "\\.XPT", "\\.rds"))) %>%
+  mutate(htm_files = paste0("https://wwwn.cdc.gov/Nchs/Nhanes/2003-2004/", str_replace_all(theme_xpt, "\\.XPT", "\\.htm")))
+
+xpt_files <- df_2003_2004$complete_urls
+
+vars_summary_all <- data.frame()
+
+ifelse(!dir.exists("rawdata/S2003_2004_rds/"),
+  dir.create("rawdata/S2003_2004_rds/", recursive = TRUE), FALSE
+)
+
+for (i in 1:length(xpt_files)) {
+  tictoc::tic()
+  data_url_string <- df_2003_2004[i, "complete_urls"]
+
+  print("-----------------------------")
+  print(paste0("Download: ", i))
+  print(data_url_string)
+
+
+
+  temp_data <- read_xpt(url(data_url_string)) %>%
+    clean_names(case = "snake")
+
+  saveRDS(temp_data, file = paste0("rawdata/S2003_2004_rds/", df_2003_2004[i, "rds_name"]))
+  rm(temp_data, data_url_string)
+
+  htm_url_string <- df_2003_2004[i, "htm_files"]
+  print(paste0("Downloading from: :", htm_url_string))
+
+  download.file(
+    url = htm_url_string,
+    destfile = paste0(
+      "rawdata/S2003_2004_rds/",
+      str_replace_all(htm_url_string, "https\\:\\/\\/wwwn\\.cdc.gov\\/Nchs\\/Nhanes\\/2003-2004\\/", "")
+    )
+  )
+
+
+  vars_summary <- readHTMLList(readLines(htm_url_string), trim = T, header = T)[2] %>%
+    as.data.frame() %>%
+    separate(col = 1, sep = " - ", into = c("var_name", "summary")) %>% 
+    mutate(theme=theme_xpt[i]) ## adding information on the theme to use in renaming the variables in the next scripts
+
+  vars_summary_all <- bind_rows(vars_summary_all, vars_summary)
+
+  rm(htm_url_string, vars_summary)
+
+  cat("\nMoving on to the next download")
+  cat("\n-----------------------------\n")
+
+  tictoc::toc()
+}
+
+
+ifelse(!dir.exists("produceddata/"),
+  dir.create("produceddata/", recursive = TRUE), FALSE
+)
+
+saveRDS(vars_summary_all, "produceddata/vars_summary_all_2003v1.rds")
+```
+
+
+# Downloading 2013-2014 data
+
+```{r S0-DataDownloadR1-4 }
+theme_xpt_1314 <- c(
+  # demographics
+  "DEMO_H.XPT",
+  # dietary
+  "DR1TOT_H.XPT",
+  # smoking data (household somking)
+  "SMQFAM_H.XPT",
+  # diabetes data
+  "DIQ_H.XPT",
+  # Body Measurement data
+  "BMX_H.XPT",
+  # physical activity data
+  "PAQ_H.XPT",
+  ## Laboratory
+  # Load 2013-2014 Albumin data
+  "ALB_CR_H.XPT",
+  # Standard Biochemistry data
+  "BIOPRO_H.XPT",
+  # Completele Blood Count data
+  "CBC_H.XPT",
+  # Cotinine data
+  "COT_H.XPT",
+  # glycohemoglobin data
+  "GHB_H.XPT",
+  # environmental phenols data
+  "EPHPP_H.XPT",
+  # Load phtalates urine data
+  "PHTHTE_H.XPT",
+   # Load arsenic data
+  "UTAS_H.XPT",
+  #Load cadmium and lead data
+  "PBCD_H.XPT",
+  # Load iodine data
+  "UIO_H.XPT",
+  #Load mercury data
+  "UHG_H.XPT",
+  #Load non-dioxin data
+  "PCBPOL_H.XPT",
+  #Load perchlorate data
+  "PERNT_H.XPT",
+   # Load Polyaromatic Hydrocarbons (PAHs)
+  "PAH_H.XPT",
+  # Load Polyfluoroalkyl Chemicals data
+  "PFAS_H.XPT"
+)
+```
+
+
+```{r S0-DataDownloadR1-5 }
+df_2013_2014 <- as.data.frame(theme_xpt_1314) %>%
+  mutate(complete_urls = paste0("https://wwwn.cdc.gov/Nchs/Nhanes/2013-2014/", theme_xpt_1314)) %>%
+  mutate(rds_name = paste0(str_replace_all(theme_xpt_1314, "\\.XPT", "\\.rds"))) %>%
+  mutate(htm_files = paste0("https://wwwn.cdc.gov/Nchs/Nhanes/2013-2014/", str_replace_all(theme_xpt_1314, "\\.XPT", "\\.htm")))
+
+xpt_files_1314 <- df_2013_2014$complete_urls
+
+vars_summary_all_1314 <- data.frame()
+
+ifelse(!dir.exists("rawdata/S2013_2014_rds/"),
+  dir.create("rawdata/S2013_2014_rds/", recursive = TRUE), FALSE
+)
+
+for (i in 1:length(xpt_files_1314)) {
+  tictoc::tic()
+  data_url_string <- df_2013_2014[i, "complete_urls"]
+
+  print("-----------------------------")
+  print(paste0("Download: ", i))
+  print(data_url_string)
+
+
+
+  temp_data <- read_xpt(url(data_url_string)) %>%
+    clean_names(case = "snake")
+
+  saveRDS(temp_data, file = paste0("rawdata/S2013_2014_rds/", df_2013_2014[i, "rds_name"]))
+  rm(temp_data, data_url_string)
+
+  htm_url_string <- df_2013_2014[i, "htm_files"]
+  print(paste0("Downloading from: :", htm_url_string))
+
+  download.file(
+    url = htm_url_string,
+    destfile = paste0(
+      "rawdata/S2013_2014_rds/",
+      str_replace_all(htm_url_string, "https\\:\\/\\/wwwn\\.cdc.gov\\/Nchs\\/Nhanes\\/2013-2014\\/", "")
+    )
+  )
+
+
+  vars_summary <- readHTMLList(readLines(htm_url_string), trim = T, header = T)[2] %>%
+    as.data.frame() %>%
+    separate(col = 1, sep = " - ", into = c("var_name", "summary"))  %>% 
+    mutate(theme=theme_xpt_1314[i])
+
+  vars_summary_all_1314 <- bind_rows(vars_summary_all_1314, vars_summary)
+
+  rm(htm_url_string, vars_summary)
+
+  cat("\nMoving on to the next download")
+  cat("\n-----------------------------\n")
+
+  tictoc::toc()
+}
+
+
+ifelse(!dir.exists("produceddata/"),
+  dir.create("produceddata/", recursive = TRUE), FALSE
+)
+
+saveRDS(vars_summary_all_1314, "produceddata/vars_summary_all_2013v1.rds")
+```
+
+# Session information
+
+```{r S0-DataDownloadR1-6 }
+sessionInfo()
+
+```
+

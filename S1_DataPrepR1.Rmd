@@ -1,0 +1,1338 @@
+---
+title: Environment-wide association study on body mass index of 12-18 year-old, US
+  NHANES 2003-2004 2003-2004 and 2013-2014
+author: "Water and Health Laboratory - Cyprus University of Technology"
+output:
+  word_document:
+    reference_docx: template.docx
+  html_document:
+    df_print: paged
+always_allow_html: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r S1-DataPrepR1-1, include=FALSE}
+rm(list=ls())
+ipak <- function(pkg){
+  new.pkg <- pkg[!(pkg %in% installed.packages()[, "Package"])]
+  if (length(new.pkg)) 
+    install.packages(new.pkg, dependencies = TRUE)
+  sapply(pkg, require, character.only = TRUE)
+}
+packages <- c("data.table","Hmisc","haven","DT","flextable","srvyr",
+              "childsds","SASxport", "survey", "janitor",
+              "tidyverse", "tableone", "broom", "knitr", "report")
+
+
+ipak(packages)
+```
+
+```{r S1-DataPrepR1-2, include=FALSE}
+vars <- read.csv("vars_summary_used.csv")
+
+vars_weights03 <- vars %>%
+  group_by(weights_03) %>%
+  summarize(variables = toString(variable)) 
+
+
+for(i in 1:nrow(vars_weights03)){
+  print(i)
+  list_vars <- str_split(vars_weights03[i,2], ", |,")[[1]]
+  name_of_list <- paste0(unlist(vars_weights03[i,1]), "_03")
+  print(name_of_list)
+  print(list_vars)
+  assign(name_of_list, list_vars, envir = .GlobalEnv)  
+  rm(name_of_list, list_vars)
+}
+
+
+vars_weights13 <- vars %>%
+  group_by(weights_13) %>%
+  summarize(variables = toString(variable)) 
+
+for(i in 1:nrow(vars_weights13)){
+  print(i)
+  list_vars <- str_split(vars_weights13[i,2], ", |,")[[1]]
+  name_of_list <- paste0(unlist(vars_weights13[i,1]), "_13")
+  print(name_of_list)
+  print(list_vars)
+  assign(name_of_list, list_vars, envir = .GlobalEnv)  
+  rm(name_of_list, list_vars)
+    }
+
+# get the variable categories
+
+variable_categories <- vars %>%
+  group_by(type) %>%
+  summarize(variables = toString(variable)) 
+
+for(i in 1:nrow(variable_categories)){
+  print(i)
+  list_vars <- str_split(variable_categories[i,2], ", |,")[[1]]
+  name_of_list <- unlist(variable_categories[i,1])
+  
+  
+  print(name_of_list)
+  print(list_vars)
+  assign(name_of_list, list_vars, envir = .GlobalEnv)  
+  
+  if(str_detect(string = name_of_list, pattern = "^contVars[:alpha:]+|nutrition1")){
+    list_vars_tr <- paste0(list_vars, "_tr")
+    name_of_list_tr <- paste0(name_of_list, "_tr")
+    
+  assign(name_of_list_tr, list_vars_tr, envir = .GlobalEnv)
+  
+  rm(name_of_list_tr, list_vars_tr)
+  }
+  
+  rm(name_of_list, list_vars)
+    }
+
+```
+
+# Discovery: 2003-2004 NHANES data
+
+Downloaded from: ***https://wwwn.cdc.gov/nchs/nhanes/ContinuousNhanes/Default.aspx?BeginYear=2003***
+
+```{r S1-DataPrepR1-3, include=FALSE}
+# Load 2003-2004 Demographic data
+DEMO <- readRDS("rawdata/S2003_2004_rds/DEMO_C.rds") %>% 
+  select(seqn, riagendr, ridageyr, ridexprg, ridreth1,
+                dmdeduc3, indfmpir, wtint2yr, wtmec2yr, sdmvstra, sdmvpsu)
+
+# Load 2003-2004 smoking data (household somking)
+SMOK <- readRDS("rawdata/S2003_2004_rds/SMQFAM_C.rds") %>% 
+  ## Keep variables that are similar between 2003-2004 and 2013-2014
+ select(seqn, smd410)
+
+# Load diabetes data 
+DIAB <- readRDS("rawdata/S2003_2004_rds/DIQ_C.rds") %>% 
+  select(seqn, diq010)
+
+# Load 2003-2004 Body Measurement data
+BMX <- readRDS("rawdata/S2003_2004_rds/BMX_C.rds") %>% 
+  select(seqn, bmxbmi)
+
+# Load physical activity data
+PAQ <- readRDS("rawdata/S2003_2004_rds/PAQ_C.rds") %>% 
+  select(pad200, seqn)
+
+# Load 2003-2004 Albumin data
+ALB_CR_H <- readRDS("rawdata/S2003_2004_rds/L16_C.rds") %>% 
+  select(urxumasi, seqn)
+
+# Load 2003-2004 Nutrient data day 1, continuous variable
+DR1TOT <- readRDS("rawdata/S2003_2004_rds/DR1TOT_C.rds") %>% 
+  select(seqn, nutrition1, wtdrd1)
+
+## Laboratory
+
+# Load 2003-2004 Standard Biochemistry data
+BIO <- readRDS("rawdata/S2003_2004_rds/L40_C.rds") %>%
+  select(
+    lbdsalsi, lbdsbusi, lbdscasi,
+    lbdschsi, lbdsgbsi, lbdsglsi,
+    lbdsirsi, lbdsphsi, lbdstbsi,
+    lbdstpsi, lbdstrsi, lbdsuasi,
+    lbxsapsi, lbxsassi, lbxsatsi,
+    lbxsc3si, lbxsclsi, lbdscrsi,
+    lbxsgtsi, lbxsksi,  lbxsldsi,
+    lbxsnasi, lbxsossi, seqn
+  )
+
+# Load 2003-2004 Complete Blood Count data
+CBC <- readRDS("rawdata/S2003_2004_rds/L25_C.rds") %>% 
+  select(lbdbano,lbdeono,lbdlymno,
+                    lbdmono,lbdneno,lbxbapct,
+                    lbxeopct,lbxhct,lbxhgb,
+                    lbxlypct,lbxmchsi,
+                    lbxmcvsi,lbxmopct,lbxmpsi,
+                    lbxnepct,lbxpltsi,lbxrbcsi,
+                    lbxrdw,lbxwbcsi,seqn)
+
+# Load Cotinine data
+COT <- readRDS("rawdata/S2003_2004_rds/L06COT_C.rds") %>% 
+  select(seqn, lbxcot)
+
+# Load glycohemoglobin data
+GHB <- readRDS("rawdata/S2003_2004_rds/L10_C.rds") %>% 
+  select(seqn, lbxgh)
+
+
+#Load cadmium,lead and mercury blood data --- this dataset doesnt have extra weights - using the mec
+CAD <- readRDS("rawdata/S2003_2004_rds/L06BMT_C.rds") %>% 
+  select(seqn, lbdbcdsi, lbdbpbsi, lbdthgsi) 
+
+
+### Sub-sample A data
+# Load Polyfluoroalkyl Chemicals data
+PFO <- readRDS("rawdata/S2003_2004_rds/L24PFC_C.rds") %>% 
+  select(seqn, lbxpfhs, lbxpfbs, lbxpfde, lbxpfhp, lbxpfna,lbxpfua, lbxpfdo, wtsa2yr) 
+
+#Load arsenic data
+ARS <- readRDS("rawdata/S2003_2004_rds/L06UAS_C.rds") %>% 
+  select(seqn, urxuas) 
+
+ 
+#Load  urine mercury data
+MER <- readRDS("rawdata/S2003_2004_rds/L06UHG_C.rds") %>% 
+  select(seqn, urxuhg)
+
+### Sub-sample B
+# Load phthalates urine data
+PHU <- readRDS("rawdata/S2003_2004_rds/L24PH_C.rds") %>% 
+  select(seqn, wtsb2yr, urxecp, urxmbp, urxmc1,urxmep, urxmhh, 
+              urxmhp, urxmib, urxmnp, urxmzp)
+
+# Load Polyaromatic Hydrocarbons (PAHs)
+PAH <- readRDS("rawdata/S2003_2004_rds/L31PAH_C.rds") %>% 
+  select(seqn, urxp01, urxp02, urxp03, urxp04, urxp06, urxp10)
+
+#### Sub-sample C
+# Load environmental phenols data
+EPH <- readRDS("rawdata/S2003_2004_rds/L24EPH_C.rds") %>% 
+  select(seqn, wtsc2yr, urxbp3)
+
+# Load iodine data
+IOD <- readRDS("rawdata/S2003_2004_rds/L06UIO_C.rds") %>% 
+  select(seqn, urxuio)
+
+
+#Load perchlorate data
+PER <- readRDS("rawdata/S2003_2004_rds/L04PER_C.rds") %>% 
+  select(seqn, urxup8)
+
+
+disc_all_raw<-plyr::join_all(list(DEMO, SMOK, DIAB, BMX, PAQ, 
+                              DR1TOT, ALB_CR_H, BIO, CBC, 
+                             COT, GHB, EPH, PHU, ARS, CAD, IOD, MER, PER, PAH, PFO), by='seqn', 
+                           type='left')
+
+# remove all objects besides the last one
+rm(list=(setdiff(ls(), c("disc_all_raw", "bmi_cat","bmi_cont","nutrition1", 
+                         # from the environment find the objects containing the expression used in grep()
+                         # to not remove the weights and variable sets created before
+                         grep("^wt|Vars|_tr$",names(.GlobalEnv),value=TRUE)))))
+```
+
+
+## Introduction - participant selection 
+
++ Total number of records/participants in the combined dataset: `r nrow(disc_all_raw)`
+
+
+Exclusion:
+
++ Records/participants <12 and >18 years-old: `r nrow(filter(disc_all_raw, ridageyr>18 | ridageyr<12))`
+
++ Pregnant participants: `r nrow(filter(disc_all_raw, ridageyr<=18 & ridageyr>=12, ridexprg==1))`
+
++ Diabetics: `r nrow(filter(disc_all_raw, ridageyr<=18 & ridageyr>=12, (ridexprg!=1 | is.na(ridexprg)), diq010==1))`
+
++ Missing BMI: `r nrow(filter(disc_all_raw, ridageyr<=18 & ridageyr>=12, (ridexprg!=1 | is.na(ridexprg)), diq010!=1, is.na(bmxbmi)))`
+
+```{r S1-DataPrepR1-4, echo=FALSE, include=FALSE}
+
+# Make modifications to disc_all_raw before subsetting
+
+disc_all_mod <- disc_all_raw %>%
+    mutate(subgroup=as.factor(case_when((ridageyr<=18 & ridageyr>=12) &
+                                        # Keep non-pregnant female subjects and male subjects
+                                          (ridexprg!=1 | is.na(ridexprg)) & 
+                                          (diq010!=1) & 
+                                          (!is.na(bmxbmi))~"in",
+                            TRUE~"out"))) %>% 
+   mutate(inAnalysis=as.factor(case_when((ridageyr<=18 & ridageyr>=12) &
+                                        # Keep non-pregnant female subjects and male subjects
+                                          (ridexprg!=1 | is.na(ridexprg)) & 
+                                          (diq010!=1) & 
+                                          (!is.na(bmxbmi))~TRUE,
+                            TRUE~FALSE))) %>% 
+   mutate(
+    sex=as.factor(case_when(riagendr==1 ~ "Male",
+                               riagendr==2 ~ "Female")),
+    ethnicity=as.factor(case_when(ridreth1==1 ~ "Mexican American",#"Mexican American"
+                                   ridreth1==2 ~ "Other Hispanic", #"Other Hispanic"
+                                   ridreth1==3 ~ "Non-Hispanic White", #"Non-Hispanic White"
+                                   ridreth1==4 ~ "Non-Hispanic Black", #"Non-Hispanic Black"
+                                   ridreth1==5 ~ "Other", #"Other, incl. multi-racial"
+                                   )),
+    ### For educational level: create a new variable to recode 99 into missing values 
+    #and grades according to US educational system
+    edu=case_when(
+                  (dmdeduc3<=12 & dmdeduc3>=0) ~ "Less than high school", #"Less than High School",
+                  dmdeduc3==55 ~ "Less than high school", #"Less than High School",
+                  dmdeduc3==66 ~ "Less than high school", #"Less than High School",
+                  dmdeduc3==13 ~ "High school diploma including GED", #"High school diploma including GED"
+                  dmdeduc3==14 ~ "High school diploma including GED", #"High school diploma including GED"
+                  dmdeduc3==15 ~ "More than high school", #"More than high school"
+                  dmdeduc3==77 ~ NA_character_, 
+                  dmdeduc3==99 ~ NA_character_),
+    # For smoking: create a new variable to recode 7 and 9 into missing values, 1 becomes No and 2 becomes Yes
+    smoker_home=case_when(smd410==9 ~ NA_character_,
+                          smd410==7 ~ NA_character_,
+                          smd410==1 ~ "Yes", #"Non Smoker at household",
+                          smd410==2 ~ "No"), #"Smoker at household") ,
+    ## Recode diabetes: 1 becomes Yes and 2 becomes No
+    diabetes=case_when(diq010==1 ~ "Yes",
+                       diq010==2 ~ "No",
+                       diq010==9 ~ NA_character_,
+                       diq010==3 ~ "No",
+                       diq010==9 ~ "No",
+                       TRUE ~ NA_character_),
+    physical_act=case_when(pad200==1~"Yes",
+                           pad200==3~"No",
+                           pad200==2~"No",
+                           TRUE~NA_character_)) %>%
+  #drop the variables that were changed
+  select(-riagendr,-ridreth1,-dmdeduc3,-smd410, -diq010, -pad200)
+
+
+
+# Subset dataset to keep those included in the study to make the variable transformations
+disc_subset <- disc_all_mod %>%
+  filter(subgroup=="in") %>% 
+  select(seqn, all_of(contVarsLab), all_of(nutrition1), all_of(contVarsPfos), 
+                       all_of(contVarsPah), all_of(contVarsArs),
+                       all_of(contVarsMetals), all_of(contVarsMerc), all_of(contVarsPht), 
+                       all_of(contVarsPerchl), all_of(contVarsLab), all_of(contVarsIod), 
+                       all_of(contVarsPhe), sex, ridageyr, bmxbmi) %>% 
+  #log-transforming using the natural logarithm and adding 1e-10 to allow to include the 0s and scaling and centering of all continuous variables
+  mutate_at(.vars=vars(all_of(contVarsLab), all_of(nutrition1), all_of(contVarsPfos), 
+                       all_of(contVarsPah), all_of(contVarsArs),
+                       all_of(contVarsMetals), all_of(contVarsMerc), all_of(contVarsPht), 
+                       all_of(contVarsPerchl), all_of(contVarsLab), all_of(contVarsIod), 
+                       all_of(contVarsPhe)), 
+            .funs = list(tr=~scale(log(.+1e-10), scale=TRUE, center=TRUE))) %>% 
+  select(-all_of(contVarsLab), -all_of(nutrition1), -all_of(contVarsPfos), 
+         -all_of(contVarsPah), -all_of(contVarsArs),
+         -all_of(contVarsMetals), -all_of(contVarsMerc), -all_of(contVarsPht), 
+         -all_of(contVarsPerchl), -all_of(contVarsLab), -all_of(contVarsIod), 
+         -all_of(contVarsPhe)) #removing those to not overload the datasets in merging below
+ 
+# Calculate BMI SDS based on CDC 2000 growth references 
+disc_subset$bmxbmi_cdc_sds <- round(sds(disc_subset$bmxbmi,
+                            age = disc_subset$ridageyr,
+                            sex = disc_subset$sex,
+                            male = "Male", female = "Female",
+                            ref = cdc.ref,
+                            item = "bmi",
+                            type = "SDS"), digits=2)
+
+
+# Calculate BMI Percentile based on CDC 2000 growth references 
+disc_subset$bmxbmi_cdc_perc <- round(sds(disc_subset$bmxbmi,
+                            age = disc_subset$ridageyr,
+                            sex = disc_subset$sex,
+                            male = "Male", female = "Female",
+                            ref = cdc.ref,
+                            item = "bmi",
+                            type = "perc"), digits=2)
+
+
+summary(cut(disc_subset$bmxbmi_cdc_perc, breaks=c(-Inf, 0.05, 0.85, 0.95, Inf), right = FALSE))
+
+# Convert BMI cdc-percentiles to categories based on CDC 2000 growth references
+disc_subset$bmxbmi_cat_perc <- cut(disc_subset$bmxbmi_cdc_perc,
+                        breaks=c(-Inf, 0.05, 0.85, 0.95, Inf),
+                        labels=c("Underweight","Healthy Weight","Overweight","Obese"))
+
+# merge the BMI categories to disc_final_total
+disc_final_total <- left_join(disc_all_mod, select(disc_subset, -ridageyr, -sex, -bmxbmi), by = "seqn") 
+```
+
+
+# Replication: 2013-2014 NHANES data
+
+Downloaded from: ***https://wwwn.cdc.gov/nchs/nhanes/ContinuousNhanes/Default.aspx?BeginYear=2013***
+  
+```{r S1-DataPrepR1-5, include=FALSE}
+
+
+# remove all objects besides the last one
+rm(list=(setdiff(ls(), c("disc_final_total", "disc_final_subset", "bmi_cat","bmi_cont","nutrition1", 
+                         # from the environment find the objects containing the expression used in grep()
+                         # to not remove the weights and variable sets created before
+                         grep("^wt|Vars|_tr$",names(.GlobalEnv),value=TRUE)))))
+
+# Load 2013-2014 Demographic data
+DEMO <- readRDS("rawdata/S2013_2014_rds/DEMO_H.rds") %>% 
+  select(seqn,riagendr,ridageyr, ridexprg, ridreth1,
+         dmdeduc3, indfmpir, wtint2yr, wtmec2yr, sdmvstra, sdmvpsu)
+
+
+# Load 2013-2014 smoking data (household somking)
+SMOK <- readRDS("rawdata/S2013_2014_rds/SMQFAM_H.rds") %>% 
+  ## Keep variables that are similar between 2003-2004 and 2013-2014
+  select(seqn, smd460)
+
+# Load diabetes data 
+DIAB <- readRDS("rawdata/S2013_2014_rds/DIQ_H.rds") %>% 
+  select(seqn, diq010)
+
+
+# Load 2013-2014 Body Measurement data
+BMX <- readRDS("rawdata/S2013_2014_rds/BMX_H.rds") %>% 
+  select(seqn, bmxbmi)
+
+# Load physical activity data
+PAQ <- readRDS("rawdata/S2013_2014_rds/PAQ_H.rds") %>% 
+  select(paq650, seqn) 
+
+
+# Load 2013-2014 Albumin data
+ALB_CR_H <- readRDS("rawdata/S2013_2014_rds/ALB_CR_H.rds") %>% 
+  select(urxums, seqn) %>% 
+  ##rename urxums to match urxumasi in 2003-2004
+  rename(urxumasi="urxums") # the same edit has to be done in the list of variables for 2013-2014
+
+
+# Load 2013-2014 Nutrient data day 1, continuous variable
+DR1TOT <- readRDS("rawdata/S2013_2014_rds/DR1TOT_H.rds") %>% 
+  select(seqn, nutrition1, wtdrd1)
+
+
+## Laboratory
+
+# Load 2013-2014 Standard Biochemistry data
+BIO <- readRDS("rawdata/S2013_2014_rds/BIOPRO_H.rds") %>%
+  select(
+    lbdsalsi, lbdsbusi, lbdscasi,
+    lbdschsi, lbdsgbsi, lbdsglsi,
+    lbdsirsi, lbdsphsi, lbdstbsi,
+    lbdstpsi, lbdstrsi, lbdsuasi,
+    lbxsapsi, lbxsassi, lbxsatsi,
+    lbxsc3si, lbxsclsi, lbdscrsi,
+    lbxsgtsi, lbxsksi, lbxsldsi,
+    lbxsnasi, lbxsossi, seqn
+  )
+
+# Load 2013-2014 Completele Blood Count data
+CBC <- readRDS("rawdata/S2013_2014_rds/CBC_H.rds") %>% 
+  select(lbdbano,lbdeono,lbdlymno,
+         lbdmono,lbdneno,lbxbapct,
+         lbxeopct,lbxhct,lbxhgb,
+         lbxlypct,lbxmchsi,
+         lbxmcvsi,lbxmopct,lbxmpsi,
+         lbxnepct,lbxpltsi,lbxrbcsi,
+         lbxrdw,lbxwbcsi,seqn)
+
+
+# Load Cotinine data
+COT <- readRDS("rawdata/S2013_2014_rds/COT_H.rds") %>% 
+  select(seqn, lbxcot)
+
+# Load glycohemoglobin data
+GHB <- readRDS("rawdata/S2013_2014_rds/GHB_H.rds") %>% 
+  select(seqn, lbxgh)
+
+#Load cadmium,lead and mercury blood data --- blood metals weights
+CAD <- readRDS("rawdata/S2013_2014_rds/PBCD_H.rds") %>% 
+  select(seqn, wtsh2yr, lbdbcdsi, lbdbpbsi, lbdthgsi)  
+
+### Sub-sample A
+#Load arsenic data
+ARS <- readRDS("rawdata/S2013_2014_rds/UTAS_H.rds") %>% 
+  select(seqn, wtsa2yr, urxuas) 
+
+# Load iodine data
+IOD <- readRDS("rawdata/S2013_2014_rds/UIO_H.rds") %>% 
+  select(seqn, urxuio)
+
+#Load mercury urine data
+MER <- readRDS("rawdata/S2013_2014_rds/UHG_H.rds") %>% 
+  select(seqn, urxuhg)
+
+#Load perchlorate data
+PER <- readRDS("rawdata/S2013_2014_rds/PERNT_H.rds") %>% 
+  select(seqn, urxup8)
+
+# Load Polyaromatic Hydrocarbons (PAHs) - Urine
+PAH <- readRDS("rawdata/S2013_2014_rds/PAH_H.rds") %>% 
+  select(seqn, urxp01, urxp02, urxp03, urxp04, urxp06, urxp10)
+
+### Sub-sample B
+# Load environmental phenols data
+EPH <- readRDS("rawdata/S2013_2014_rds/EPHPP_H.rds") %>% 
+  select(seqn, wtsb2yr, urxbp3)
+
+# Load phtalates urine data
+PHU <- readRDS("rawdata/S2013_2014_rds/PHTHTE_H.rds") %>% 
+  select(seqn, urxecp, urxmbp, urxmc1,urxmep, urxmhh, 
+         urxmhp, urxmib, urxmnp, urxmzp)
+
+# Load Polyfluoroalkyl Chemicals data
+PFO <- readRDS("rawdata/S2013_2014_rds/PFAS_H.rds") %>% 
+  select(seqn, lbxpfhs, lbxpfbs, lbxpfde, lbxpfhp, lbxpfna,lbxpfua, lbxpfdo) 
+
+repl_raw_total <-plyr::join_all(list(DEMO, SMOK, DIAB, BMX, PAQ, 
+                                     DR1TOT, ALB_CR_H, BIO, CBC, 
+                                     COT, GHB, EPH, PHU, ARS, CAD, 
+                                     IOD, MER,  PER, PAH, PFO), by='seqn', 
+                                type='left')
+
+# remove all objects besides the last one
+rm(list=(setdiff(ls(), c("repl_raw_total", "disc_final_total","nutrition1", 
+                         "bmi_cat", "bmi_cont",
+                         grep("^wt|Vars|_tr$",names(.GlobalEnv),value=TRUE)))))
+
+```
+
+## Introduction - participant selection
+
++ Total number of records/participants in the combined dataset: `r nrow(repl_raw_total)`
+
+
+Exclusion:
+  
+  + Records/participants <12 and >18 years-old: `r nrow(filter(repl_raw_total, ridageyr>18 | ridageyr<12))`
+
++ Pregnant participants: # no filtering for this variable in 2013-2014
+  
+  + Diabetics: `r nrow(filter(repl_raw_total, ridageyr<=18 & ridageyr>=12, diq010==1))`
+
++ Missing BMI: `r nrow(filter(repl_raw_total, ridageyr<=18 & ridageyr>=12, diq010!=1, is.na(bmxbmi)))`
+
+
+
+```{r S1-DataPrepR1-6, echo=FALSE, fig.height=15, fig.width=10, include=FALSE}
+
+# Make modifications to repl_raw_total before subsetting
+repl_all_mod <- repl_raw_total %>%
+  mutate(subgroup=as.factor(case_when((ridageyr<=18 & ridageyr>=12) &
+                                        # Keep non-diabetic female subjects and male subjects
+                                        (diq010!=1) & (!is.na(bmxbmi))~"in",                            TRUE~"out"))) %>% 
+  mutate(inAnalysis=as.factor(case_when((ridageyr<=18 & ridageyr>=12) &
+                                          # Keep non-diabetic female subjects and male subjects
+                                          (diq010!=1) & (!is.na(bmxbmi))~TRUE,                             TRUE~FALSE))) %>% 
+  mutate(
+    sex=as.factor(case_when(riagendr==1 ~ "Male",
+                            riagendr==2 ~ "Female")),
+    ethnicity=as.factor(case_when(ridreth1==1 ~ "Mexican American",#"Mexican American"
+                                  ridreth1==2 ~ "Other Hispanic", #"Other Hispanic"
+                                  ridreth1==3 ~ "Non-Hispanic White", #"Non-Hispanic White"
+                                  ridreth1==4 ~ "Non-Hispanic Black", #"Non-Hispanic Black"
+                                  ridreth1==5 ~ "Other", #"Other, incl. multi-racial"
+    )),
+    ### For educational level: create a new variable to recode 99 into missing values 
+    edu=case_when(
+      (dmdeduc3<=12 & dmdeduc3>=0) ~ "Less than high school", #"Less than High School",
+      dmdeduc3==55 ~ "Less than high school", #"Less than High School",
+      dmdeduc3==66 ~ "Less than high school", #"Less than High School",
+      dmdeduc3==13 ~ "High school diploma including GED", #"High school diploma including GED"
+      dmdeduc3==14 ~ "High school diploma including GED", #"High school diploma including GED"
+      dmdeduc3==15 ~ "More than high school", #"More than high school"
+      dmdeduc3==77 ~ NA_character_, 
+      dmdeduc3==99 ~ NA_character_),
+    # For smoking: create a new variable to recode 7 and 9 into missing values, 1 becomes 0 and 2 becomes 1
+    smoker_home=case_when(smd460==999 ~ NA_character_,
+                          smd460==777 ~ NA_character_,
+                          smd460==0 ~ "No", #"Non Smoker at household",
+                          smd460==1 ~ "Yes",
+                          smd460==2 ~ "Yes",
+                          smd460==3 ~ "Yes"), #"Smoker at household") ,
+    ## Recode diabetes: 1 becomes 0 and 2 becomes 1
+    diabetes=case_when(diq010==1 ~ "Yes",
+                       diq010==2 ~ "No",
+                       diq010==9 ~ NA_character_,
+                       diq010==3 ~ "No",
+                       diq010==9 ~ "No",
+                       TRUE ~ NA_character_),
+    physical_act=case_when(paq650==1~"Yes",
+                           paq650==3~"No",
+                           paq650==2~"No",
+                           TRUE~NA_character_))%>%
+  #drop the variables that were changed
+  select(-riagendr,-ridreth1,-dmdeduc3,-smd460, -diq010, -paq650)
+
+
+# Subset dataset to keep those included in the study
+repl_subset <- repl_all_mod %>%
+  filter(subgroup=="in") %>% 
+  select(seqn, all_of(contVarsLab), all_of(nutrition1), all_of(contVarsPfos), 
+                       all_of(contVarsPah), all_of(contVarsArs),
+                       all_of(contVarsMetals), all_of(contVarsMerc), all_of(contVarsPht), 
+                       all_of(contVarsPerchl), all_of(contVarsLab), all_of(contVarsIod), 
+                       all_of(contVarsPhe), sex, ridageyr, bmxbmi) %>% 
+  #log-transforming using the natural logarithm and adding 1e-10 to allow to include the 0s and scaling and centering of all continuous variables
+  mutate_at(.vars=vars(all_of(contVarsLab), all_of(nutrition1), all_of(contVarsPfos), 
+                       all_of(contVarsPah), all_of(contVarsArs),
+                       all_of(contVarsMetals), all_of(contVarsMerc), all_of(contVarsPht), 
+                       all_of(contVarsPerchl), all_of(contVarsLab), all_of(contVarsIod), 
+                       all_of(contVarsPhe)), 
+            .funs = list(tr=~scale(log(.+1e-10), scale=TRUE, center=TRUE))) %>% 
+  select(-all_of(contVarsLab), -all_of(nutrition1), -all_of(contVarsPfos), 
+         -all_of(contVarsPah), -all_of(contVarsArs),
+         -all_of(contVarsMetals), -all_of(contVarsMerc), -all_of(contVarsPht), 
+         -all_of(contVarsPerchl), -all_of(contVarsLab), -all_of(contVarsIod), 
+         -all_of(contVarsPhe)) #removing those to not overload the datasets in merging below
+ 
+
+# Calculate BMI SDS based on CDC 2000 growth references 
+repl_subset$bmxbmi_cdc_sds <- round(sds(repl_subset$bmxbmi,
+                                        age = repl_subset$ridageyr,
+                                        sex = repl_subset$sex,
+                                        male = "Male", female = "Female",
+                                        ref = cdc.ref,
+                                        item = "bmi",
+                                        type = "SDS"), digits=2)
+
+
+# Calculate BMI Percentile based on CDC 2000 growth references 
+repl_subset$bmxbmi_cdc_perc <- round(sds(repl_subset$bmxbmi,
+                                         age = repl_subset$ridageyr,
+                                         sex = repl_subset$sex,
+                                         male = "Male", female = "Female",
+                                         ref = cdc.ref,
+                                         item = "bmi",
+                                         type = "perc"), digits=2)
+
+
+summary(cut(repl_subset$bmxbmi_cdc_perc, breaks=c(-Inf, 0.05, 0.85, 0.95, Inf), right = FALSE))
+
+# Convert BMI cdc-percentiles to categories based on CDC 2000 growth references
+repl_subset$bmxbmi_cat_perc <- cut(repl_subset$bmxbmi_cdc_perc,
+                                   breaks=c(-Inf, 0.05, 0.85, 0.95, Inf),
+                                   labels=c("Underweight","Healthy Weight","Overweight","Obese"))
+
+# merge the BMI categories to repl_final_total
+repl_final_total <- left_join(repl_all_mod, select(repl_subset, -ridageyr, -sex, -bmxbmi), by = "seqn")  
+
+```
+
+
+
+#Check of the variables
+
+
+```{r S1-DataPrepR1-7, include=FALSE}
+
+### Importing the variables summary created in the previous script
+
+vars_summary_03 <- readRDS("produceddata/vars_summary_all_2003v1.rds") %>% 
+  mutate(var_name=tolower(var_name)) %>% 
+  add_row(var_name="smoker_home", summary="Smokers at home") %>% 
+  add_row(var_name="ethnicity", summary="Ethnicity") %>% 
+  add_row(var_name="sex", summary="Sex") %>% 
+  add_row(var_name="edu", summary="Educational level")  %>%
+  add_row(var_name="bmxbmi_cdc_sds", summary="BMI SDS") %>%
+  add_row(var_name="bmxbmi_cdc_perc", summary="BMI SDS percentile") %>%
+  add_row(var_name="bmxbmi_cat_perc", summary="BMI categories") %>%
+  add_row(var_name="physical_act", summary="Physical activity")
+
+
+
+saveRDS(select(vars_summary_03, -theme), file = "produceddata/vars_summary_all_2003.rds")
+
+
+vars_summary_13 <- readRDS("produceddata/vars_summary_all_2013v1.rds") %>% 
+  mutate(var_name=tolower(var_name))  %>% 
+  add_row(var_name="smoker_home", summary="Smokers at home") %>% 
+  add_row(var_name="ethnicity", summary="Ethnicity") %>% 
+  add_row(var_name="sex", summary="Sex") %>% 
+  add_row(var_name="edu", summary="Educational level") %>%
+  add_row(var_name="bmxbmi_cdc_sds", summary="BMI CDC normalization") %>%
+  add_row(var_name="bmxbmi_cdc_perc", summary="BMI CDC normalization percentage") %>%
+  add_row(var_name="bmxbmi_cat_perc", summary="BMI categories") %>%
+  add_row(var_name="physical_act", summary="Physical activity") %>% 
+  mutate(var_name=case_when(var_name=="urxums"~"urxumasi",
+                            # this variable is for hydroxycotinine which is not selected
+                            # only serum cotinine is selected from this dataset but the change 
+                            # in the name is useful as the same name is used for hematocrit from dataset CBC_H
+                            var_name=="lbxhct" & theme=="COT_H.XPT"~"lbxhcot",
+                            TRUE~str_replace_all(var_name, " ", "")))
+
+saveRDS(select(vars_summary_13, -theme), file = "produceddata/vars_summary_all_2013.rds")
+
+
+### Working on the 2003-2004
+
+# identifying variables with >20% of missing values from subset of disc_final
+nas_3<-disc_final_total %>% 
+  filter(inAnalysis==TRUE) %>% 
+  select(all_of(contVarsLab), all_of(nutrition1), all_of(contVarsPfos), 
+                       all_of(contVarsPah), all_of(contVarsArs),
+                       all_of(contVarsMetals), all_of(contVarsMerc), all_of(contVarsPht), 
+                       all_of(contVarsPerchl), all_of(contVarsLab), all_of(contVarsIod), 
+                       all_of(contVarsPhe), sex, all_of(bmi_cat), all_of(bmi_cont),
+         all_of(catVars), all_of(catVarsLab), all_of(contVars)) %>% 
+  inspectdf::inspect_na() %>% 
+  rename(var_name="col_name") %>% 
+  left_join(., vars_summary_03)%>% 
+  rowid_to_column(var = "r3")
+
+
+# identifying variables with >20% of missing values from subset of disc_final
+nas_13<-repl_final_total %>% 
+  filter(inAnalysis==TRUE) %>%
+  select(all_of(contVarsLab), all_of(nutrition1), all_of(contVarsPfos), 
+                       all_of(contVarsPah), all_of(contVarsArs),
+                       all_of(contVarsMetals), all_of(contVarsMerc), all_of(contVarsPht), 
+                       all_of(contVarsPerchl), all_of(contVarsLab), all_of(contVarsIod), 
+                       all_of(contVarsPhe), sex, all_of(bmi_cat), all_of(bmi_cont),
+         all_of(catVars), all_of(catVarsLab), all_of(contVars)) %>% 
+  inspectdf::inspect_na() %>% 
+  rename(var_name="col_name") %>% 
+  left_join(., vars_summary_13) %>% 
+  rowid_to_column(var = "r13")
+
+disc_final_subset <- disc_final_total %>% 
+  filter(inAnalysis==TRUE)
+
+
+repl_final_subset <- repl_final_total %>% 
+  filter(inAnalysis==TRUE)
+
+
+saveRDS(disc_final_total, file = "produceddata/disc_final_total.rds")
+
+saveRDS(repl_final_total, file = "produceddata/repl_final_total.rds")
+
+```
+
+
+# 2003-2004
+
+## Descriptives - Background: unweighted statistics 2003-2004
+
+Background participant characteristics: Descriptives of the categorical variables.
+
+
+`r kableone(CreateCatTable(vars = c(catVars, bmi_cat), data = disc_final_subset))`
+
+Background participant characteristics: Descriptives of the continuous variables.
+
+`r kableone(CreateContTable(vars = contVars, data = disc_final_subset))`
+
+
+Background participant characteristics: Descriptives of the physical activity variable.
+
+`r kableone(CreateCatTable(vars = catVarsLab, data = disc_final_subset))`
+
+
+
+```{r S1-DataPrepR1-8, include=FALSE}
+
+# remove all objects besides the dataframes needed for creating survey designs
+rm(list=(setdiff(ls(), c("disc_final_total", "repl_final_total","repl_final_subset", "disc_final_subset", "bmi_cat","bmi_cont",
+                         "nutrition1", grep("^wt|Vars|_tr$",names(.GlobalEnv),value=TRUE), 
+                         "vars_summary_03", "vars_summary_13"))))
+
+
+# Create the study designs: interview weight
+
+nhanesDesign_int2yr_df <-  disc_final_total[,c("seqn", "sdmvpsu", "sdmvstra", "wtint2yr", "inAnalysis", wtint2yr_03)] 
+
+
+nhanesDesign_int2yr <- svydesign(id  = ~sdmvpsu,
+                                 strata  = ~sdmvstra,
+                                 weights = ~wtint2yr,
+                                 nest    = TRUE,
+                                 data    = nhanesDesign_int2yr_df)
+
+
+# Here we use "subset" to tell "nhanesDesign" to look for our study population
+nhanesTarget_int2yr <- subset(nhanesDesign_int2yr, inAnalysis==TRUE)
+
+# Survey design: dietary day 1 
+
+nhanesDesign_drd1_df <- subset(disc_final_total[,c("seqn", "sdmvpsu", "sdmvstra", "wtdrd1", "inAnalysis",
+                                                   bmi_cat, bmi_cont, catVars, contVars, wtdrd1_03, paste0(wtdrd1_03, "_tr"))], !is.na(wtdrd1)) ## added bmi_cont for the regression
+
+nhanesDesign_drd1 <- svydesign(id  = ~sdmvpsu,
+                               strata  = ~sdmvstra,
+                               weights = ~wtdrd1,
+                               nest    = TRUE,
+                               data    = nhanesDesign_drd1_df)
+
+
+# Here we use "subset" to tell "nhanesDesign" to look for our study population
+nhanesTarget_drd1<- subset(nhanesDesign_drd1, inAnalysis==TRUE)
+
+# Survey design: Medical examination 
+nhanesDesign_mec_df <- subset(disc_final_total[,c("seqn", "sdmvpsu", "sdmvstra", "wtmec2yr", "inAnalysis", 
+                                                  bmi_cat, bmi_cont, catVars, "bmxbmi", 
+                                                  contVars, 
+                                                  wtmec2yr_03, 
+                                                  #taking also the variables that have been transformed from those having the mec weights 
+                                                  paste0(setdiff(wtmec2yr_03, catVarsLab), "_tr"))], !is.na(wtmec2yr)) 
+
+nhanesDesign_mec <- svydesign(id  = ~sdmvpsu,
+                              strata  = ~sdmvstra,
+                              weights = ~wtmec2yr,
+                              nest    = TRUE,
+                              data = nhanesDesign_mec_df)
+
+
+# Here we use "subset" to tell "nhanesDesign" to look for our study population
+nhanesTarget_mec <- subset(nhanesDesign_mec, inAnalysis==TRUE)
+
+# Survey design: for subsample A 
+nhanesDesign_a2yr_df <- subset(disc_final_total[,c("seqn", "sdmvpsu", "sdmvstra", "wtsa2yr", "inAnalysis", 
+                                                  bmi_cat, bmi_cont, catVars, "bmxbmi", 
+                                                  contVars, 
+                                                  wtsa2yr_03, 
+                                                  #taking also the variables that have been transformed from those having the mec weights 
+                                                  paste0(wtsa2yr_03, "_tr"))], !is.na(wtsa2yr)) 
+
+nhanesDesign_a2yr <- svydesign(id  = ~sdmvpsu,
+                              strata  = ~sdmvstra,
+                              weights = ~wtsa2yr,
+                              nest    = TRUE,
+                              data = nhanesDesign_a2yr_df)
+
+
+# Here we use "subset" to tell "nhanesDesign" to look for our study population
+nhanesTarget_a2yr <- subset(nhanesDesign_a2yr, inAnalysis==TRUE)
+
+# Survey design: for subsample B 
+nhanesDesign_b2yr_df <- subset(disc_final_total[,c("seqn", "sdmvpsu", "sdmvstra", "wtsb2yr", "inAnalysis", 
+                                                  bmi_cat, bmi_cont, catVars, "bmxbmi", 
+                                                  contVars, 
+                                                  wtsb2yr_03, 
+                                                  paste0(wtsb2yr_03, "_tr"))], !is.na(wtsb2yr)) 
+
+nhanesDesign_b2yr <- svydesign(id  = ~sdmvpsu,
+                              strata  = ~sdmvstra,
+                              weights = ~wtsb2yr,
+                              nest    = TRUE,
+                              data = nhanesDesign_b2yr_df)
+
+
+# Here we use "subset" to tell "nhanesDesign" to look for our study population
+nhanesTarget_b2yr <- subset(nhanesDesign_b2yr, inAnalysis==TRUE)
+
+
+# Survey design: for subsample C
+nhanesDesign_c2yr_df <- subset(disc_final_total[,c("seqn", "sdmvpsu", "sdmvstra", "wtsc2yr", "inAnalysis", 
+                                                  bmi_cat, bmi_cont, catVars, "bmxbmi", 
+                                                  contVars, 
+                                                  wtsc2yr_03, 
+                                                  paste0(wtsc2yr_03, "_tr"))], !is.na(wtsc2yr)) 
+
+nhanesDesign_c2yr <- svydesign(id  = ~sdmvpsu,
+                              strata  = ~sdmvstra,
+                              weights = ~wtsc2yr,
+                              nest    = TRUE,
+                              data = nhanesDesign_c2yr_df)
+
+
+# Here we use "subset" to tell "nhanesDesign" to look for our study population
+nhanesTarget_c2yr <- subset(nhanesDesign_c2yr, inAnalysis==TRUE)
+
+
+
+
+#saving survey objects for later use at regression step
+saveRDS(nhanesTarget_int2yr, file = "produceddata/nhanesTarget_int2yr_03.rds")
+saveRDS(nhanesTarget_drd1, file = "produceddata/nhanesTarget_drd1_03.rds")
+saveRDS(nhanesTarget_mec, file = "produceddata/nhanesTarget_mec_03.rds")
+saveRDS(nhanesTarget_a2yr, file = "produceddata/nhanesTarget_a2yr_03.rds")
+saveRDS(nhanesTarget_b2yr, file = "produceddata/nhanesTarget_b2yr_03.rds")
+saveRDS(nhanesTarget_c2yr, file = "produceddata/nhanesTarget_c2yr_03.rds")
+
+saveRDS(nhanesDesign_int2yr_df, file = "produceddata/nhanesDesign_int2yr_df_03.rds")
+saveRDS(nhanesDesign_drd1_df, file = "produceddata/nhanesDesign_drd1_df_03.rds")
+saveRDS(nhanesDesign_mec_df, file = "produceddata/nhanesDesign_mec_df_03.rds")
+saveRDS(nhanesDesign_a2yr_df, file = "produceddata/nhanesDesign_a2yr_df_03.rds")
+saveRDS(nhanesDesign_b2yr_df, file = "produceddata/nhanesDesign_b2yr_df_03.rds")
+saveRDS(nhanesDesign_c2yr_df, file = "produceddata/nhanesDesign_c2yr_df_03.rds")
+
+
+```
+
+
+
+## Weighted analysis: Demographics --- 2 yr weights
+
+```{r S1-DataPrepR1-9, echo=FALSE, include=FALSE}
+source("functions/tables_functions.R")
+
+NH_int_sex <- cat_small_tables_forsex(sex, nhanesTarget_int2yr)
+
+NH_int_cont_cat <- bind_rows(cont_small_tables_bysex(ridageyr, nhanesTarget_int2yr),
+                             cont_small_tables_bysex(indfmpir, nhanesTarget_int2yr),
+                             cat_small_tables_bysex(ethnicity, nhanesTarget_int2yr),
+                             cat_small_tables_bysex(edu, nhanesTarget_int2yr),
+                             cat_small_tables_bysex(smoker_home, nhanesTarget_int2yr)) %>% 
+  left_join(., select(vars_summary_03, -theme), by="var_name") %>% 
+  relocate(summary, .before=values) %>% 
+  select(-var_name)
+```
+
+
+
+Study participants by sex: Weighted statistics (percentage [95% CI]).
+
+`r NH_int_sex %>%  regulartable() %>% set_table_properties(layout = "autofit") %>% fontsize(size = 8, part = "body")`
+
+Demographic characteristics of study participants overall and by sex: Weighted statistics (mean (se) and median [iqr] presented for the continuous variables and percentage [95% CI] for the categorical variables).
+
+`r NH_int_cont_cat %>%  regulartable() %>% set_table_properties(layout = "autofit") %>% fontsize(size = 8, part = "body")`
+
+
+## Weighted analysis: Nutrition day 1 Variables --- nutrition weights
+
+```{r S1-DataPrepR1-10, echo=FALSE, include=FALSE}
+NH_mec_cont_nutr <- data.frame()
+for (i in 1:length(nutrition1)){
+  k <- cont_small_tables_bysex(get(nutrition1[i]),nhanesTarget_drd1)
+  k$var_name <- nutrition1[i]
+  NH_mec_cont_nutr <- rbind(NH_mec_cont_nutr,k)
+}
+
+NH_mec_cont_nutr <- NH_mec_cont_nutr %>%
+  left_join(., select(vars_summary_03, -theme), by="var_name") %>%
+  relocate(summary, .before=values) %>% 
+  select(-var_name,-values)
+```
+
+Nutrition dietary variables of study participants overall and by sex: Weighted statistics (mean (SD) and median[IQR]).
+
+`r NH_mec_cont_nutr %>%  regulartable()%>% set_table_properties(layout = "autofit") %>% fontsize(size = 8, part = "body")`
+
+## Weighted analysis: Laboratory Categorical and Continuous Variables --- mec weights
+
+```{r S1-DataPrepR1-11, echo=FALSE, include=FALSE}
+cont_in_mec <- setdiff(wtmec2yr_03, catVarsLab)
+
+
+NH_mec_cont_lab <- data.frame()
+for (i in 1:length(cont_in_mec)){
+  k <- cont_small_tables_bysex(get(cont_in_mec[i]), nhanesTarget_mec)
+  k$var_name <- cont_in_mec[i]
+  NH_mec_cont_lab <- rbind(NH_mec_cont_lab,k)
+}
+
+NH_mec_cont <- bind_rows(NH_mec_cont_lab,
+                         cont_small_tables_bysex(bmxbmi_cdc_sds, nhanesTarget_mec),
+                         cont_small_tables_bysex(bmxbmi_cdc_perc, nhanesTarget_mec))
+
+NH_mec_cont <- NH_mec_cont %>%
+  left_join(., select(vars_summary_03, -theme), by="var_name") %>%
+  relocate(summary, .before=values) %>% 
+  select(-var_name,-values)
+
+
+
+NH_mec_cat <- bind_rows(cat_small_tables_bysex(physical_act, nhanesTarget_mec),
+                        cat_small_tables_bysex(bmxbmi_cat_perc, nhanesTarget_mec)) %>% 
+  left_join(., select(vars_summary_03, -theme), by="var_name") %>% 
+  relocate(summary, .before=values) %>% 
+  select(-var_name)
+```
+
+Laboratory characteristics of study participants overall and by sex: Weighted statistics (mean (SD) and median [IQR])).
+
+`r NH_mec_cont %>%  regulartable()%>% set_table_properties(layout = "autofit") %>% fontsize(size = 8, part = "body") %>% add_header("L", top=T)`
+
+
+Physical activity and BMI (cat.): Weighted statistics (percentage [95% CI])).
+
+`r NH_mec_cat %>%  regulartable()%>% set_table_properties(layout = "autofit") %>% fontsize(size = 8, part = "body")`
+
+## Weighted analysis: Laboratory Categorical and Continuous Variables --- subsample A weights
+
+```{r S1-DataPrepR1-12, echo=FALSE, include=FALSE}
+NH_a2yr <- data.frame()
+for (i in 1:length(wtsa2yr_03)){
+  k <- cont_small_tables_bysex(get(wtsa2yr_03[i]), nhanesTarget_a2yr)
+  k$var_name <- wtsa2yr_03[i]
+  NH_a2yr <- rbind(NH_a2yr,k)
+}
+
+
+NH_a2yr <- NH_a2yr %>%
+  left_join(., select(vars_summary_03, -theme), by="var_name") %>%
+  relocate(summary, .before=values) %>% 
+  select(-var_name,-values)
+
+```
+
+Laboratory characteristics of study participants overall and by sex: Weighted statistics (mean (SD) and median [IQR])).
+
+`r NH_a2yr %>%  regulartable() %>% set_table_properties(layout = "autofit") %>% fontsize(size = 8, part = "body") %>% add_header("L", top=T)`
+
+## Weighted analysis: Laboratory Categorical and Continuous Variables --- subsample B weights
+
+```{r S1-DataPrepR1-13, echo=FALSE, include=FALSE}
+NH_b2yr <- data.frame()
+for (i in 1:length(wtsb2yr_03)){
+  k <- cont_small_tables_bysex(get(wtsb2yr_03[i]), nhanesTarget_b2yr)
+  k$var_name <- wtsb2yr_03[i]
+  NH_b2yr <- rbind(NH_b2yr,k)
+}
+
+
+NH_b2yr <- NH_b2yr %>%
+  left_join(., select(vars_summary_03, -theme), by="var_name") %>%
+  relocate(summary, .before=values) %>% 
+  select(-var_name,-values)
+
+```
+
+Laboratory characteristics of study participants overall and by sex: Weighted statistics (mean (SD) and median [IQR])).
+
+`r NH_b2yr %>%  regulartable() %>% set_table_properties(layout = "autofit") %>% fontsize(size = 8, part = "body") %>% add_header("L", top=T)`
+
+## Weighted analysis: Laboratory Categorical and Continuous Variables --- subsample C weights
+
+```{r S1-DataPrepR1-14, echo=FALSE, include=FALSE}
+NH_c2yr <- data.frame()
+for (i in 1:length(wtsc2yr_03)){
+  k <- cont_small_tables_bysex(get(wtsc2yr_03[i]), nhanesTarget_c2yr)
+  k$var_name <- wtsc2yr_03[i]
+  NH_c2yr <- rbind(NH_c2yr,k)
+}
+
+
+NH_c2yr <- NH_c2yr %>%
+  left_join(., select(vars_summary_03, -theme), by="var_name") %>%
+  relocate(summary, .before=values) %>% 
+  select(-var_name,-values)
+
+```
+
+Laboratory characteristics of study participants overall and by sex: Weighted statistics (mean (SD) and median [IQR])).
+
+`r NH_c2yr %>%  regulartable() %>% set_table_properties(layout = "autofit") %>% fontsize(size = 8, part = "body") %>% add_header("L", top=T)`
+
+
+
+## QQ-plots
+
+```{r S1-DataPrepR1-15, echo=FALSE, include=TRUE}
+disc_final_total %>% 
+  filter(inAnalysis==TRUE) %>% 
+  ggplot(., aes(sample = bmxbmi_cdc_sds)) +
+  geom_qq() +
+  ggtitle(label = "QQplot of the Body Mass Index") + theme_minimal()
+```
+
+
+# 2013-2014
+
+## Descriptives - Background: unweighted statistics 2013-2014
+
+Background participant characteristics: Descriptives of the categorical variables.
+
+`r kableone(CreateCatTable(vars = c(catVars, bmi_cat), data = repl_final_subset))` 
+
+Background participant characteristics: Descriptives of the continuous variables.
+
+`r kableone(CreateContTable(vars = contVars, data = repl_final_subset))`
+
+Background participant characteristics: Descriptives of the physical activity variable
+
+`r kableone(CreateCatTable(vars = all_of(catVarsLab), data = repl_final_subset))`
+
+
+
+```{r S1-DataPrepR1-16, include=FALSE}
+
+# remove all objects besides the dataframes needed for creating survey designs
+rm(list=(setdiff(ls(), c("repl_final_total","repl_final_subset", "bmi_cat","bmi_cont",
+                         "nutrition1", grep("_13$|Vars|_tr$",names(.GlobalEnv),value=TRUE), 
+                         "vars_summary_03", "vars_summary_13","cat_small_tables_bysex", 
+                         "cont_small_tables_bysex","cat_small_tables_forsex"))))
+
+
+
+# Create the study designs: interview weight
+
+nhanesDesign_int2yr_df <-  repl_final_total[,c("seqn", "sdmvpsu", "sdmvstra", "wtint2yr", "inAnalysis", wtint2yr_13)] 
+
+
+nhanesDesign_int2yr <- svydesign(id  = ~sdmvpsu,
+                                 strata  = ~sdmvstra,
+                                 weights = ~wtint2yr,
+                                 nest    = TRUE,
+                                 data    = nhanesDesign_int2yr_df)
+
+
+# Here we use "subset" to tell "nhanesDesign" to look for our study population
+nhanesTarget_int2yr <- subset(nhanesDesign_int2yr, inAnalysis==TRUE)
+
+# Survey design: dietary day 1 
+
+nhanesDesign_drd1_df <- subset(repl_final_total[,c("seqn", "sdmvpsu", "sdmvstra", "wtdrd1", "inAnalysis",
+                                                   bmi_cat, bmi_cont, catVars, contVars, wtdrd1_13, paste0(wtdrd1_13, "_tr"))], !is.na(wtdrd1)) ## added bmi_cont for the regression
+
+nhanesDesign_drd1 <- svydesign(id  = ~sdmvpsu,
+                               strata  = ~sdmvstra,
+                               weights = ~wtdrd1,
+                               nest    = TRUE,
+                               data    = nhanesDesign_drd1_df)
+
+
+# Here we use "subset" to tell "nhanesDesign" to look for our study population
+nhanesTarget_drd1<- subset(nhanesDesign_drd1, inAnalysis==TRUE)
+
+# Survey design: Medical examination 
+nhanesDesign_mec_df <- subset(repl_final_total[,c("seqn", "sdmvpsu", "sdmvstra", "wtmec2yr", "inAnalysis", 
+                                                  bmi_cat, bmi_cont, catVars, "bmxbmi", 
+                                                  contVars, 
+                                                  wtmec2yr_13, 
+                                                  #taking also the variables that have been transformed from those having the mec weights 
+                                                  paste0(setdiff(wtmec2yr_13, catVarsLab), "_tr"))], !is.na(wtmec2yr)) 
+
+nhanesDesign_mec <- svydesign(id  = ~sdmvpsu,
+                              strata  = ~sdmvstra,
+                              weights = ~wtmec2yr,
+                              nest    = TRUE,
+                              data = nhanesDesign_mec_df)
+
+
+# Here we use "subset" to tell "nhanesDesign" to look for our study population
+nhanesTarget_mec <- subset(nhanesDesign_mec, inAnalysis==TRUE)
+
+# Survey design: for subsample A 
+nhanesDesign_a2yr_df <- subset(repl_final_total[,c("seqn", "sdmvpsu", "sdmvstra", "wtsa2yr", "inAnalysis", 
+                                                  bmi_cat, bmi_cont, catVars, "bmxbmi", 
+                                                  contVars, 
+                                                  wtsa2yr_13, 
+                                                  #taking also the variables that have been transformed from those having the mec weights 
+                                                  paste0(wtsa2yr_13, "_tr"))], !is.na(wtsa2yr)) 
+
+nhanesDesign_a2yr <- svydesign(id  = ~sdmvpsu,
+                              strata  = ~sdmvstra,
+                              weights = ~wtsa2yr,
+                              nest    = TRUE,
+                              data = nhanesDesign_a2yr_df)
+
+
+# Here we use "subset" to tell "nhanesDesign" to look for our study population
+nhanesTarget_a2yr <- subset(nhanesDesign_a2yr, inAnalysis==TRUE)
+
+# Survey design: for subsample B 
+nhanesDesign_b2yr_df <- subset(repl_final_total[,c("seqn", "sdmvpsu", "sdmvstra", "wtsb2yr", "inAnalysis", 
+                                                  bmi_cat, bmi_cont, catVars, "bmxbmi", 
+                                                  contVars, 
+                                                  wtsb2yr_13, 
+                                                  paste0(wtsb2yr_13, "_tr"))], !is.na(wtsb2yr)) 
+
+nhanesDesign_b2yr <- svydesign(id  = ~sdmvpsu,
+                              strata  = ~sdmvstra,
+                              weights = ~wtsb2yr,
+                              nest    = TRUE,
+                              data = nhanesDesign_b2yr_df)
+
+
+# Here we use "subset" to tell "nhanesDesign" to look for our study population
+nhanesTarget_b2yr <- subset(nhanesDesign_b2yr, inAnalysis==TRUE)
+
+
+# Survey design: for metals
+nhanesDesign_h2yr_df <- subset(repl_final_total[,c("seqn", "sdmvpsu", "sdmvstra", "wtsh2yr", "inAnalysis", 
+                                                  bmi_cat, bmi_cont, catVars, "bmxbmi", 
+                                                  contVars, 
+                                                  wtsh2yr_13, 
+                                                  paste0(wtsh2yr_13, "_tr"))], !is.na(wtsh2yr)) 
+
+nhanesDesign_h2yr <- svydesign(id  = ~sdmvpsu,
+                              strata  = ~sdmvstra,
+                              weights = ~wtsh2yr,
+                              nest    = TRUE,
+                              data = nhanesDesign_h2yr_df)
+
+
+# Here we use "subset" to tell "nhanesDesign" to look for our study population
+nhanesTarget_h2yr <- subset(nhanesDesign_h2yr, inAnalysis==TRUE)
+
+
+
+
+#saving survey objects for later use at regression step
+saveRDS(nhanesTarget_int2yr, file = "produceddata/nhanesTarget_int2yr_13.rds")
+saveRDS(nhanesTarget_drd1, file = "produceddata/nhanesTarget_drd1_13.rds")
+saveRDS(nhanesTarget_mec, file = "produceddata/nhanesTarget_mec_13.rds")
+saveRDS(nhanesTarget_a2yr, file = "produceddata/nhanesTarget_a2yr_13.rds")
+saveRDS(nhanesTarget_b2yr, file = "produceddata/nhanesTarget_b2yr_13.rds")
+saveRDS(nhanesTarget_h2yr, file = "produceddata/nhanesTarget_h2yr_13.rds")
+
+saveRDS(nhanesDesign_int2yr_df, file = "produceddata/nhanesDesign_int2yr_df_13.rds")
+saveRDS(nhanesDesign_drd1_df, file = "produceddata/nhanesDesign_drd1_df_13.rds")
+saveRDS(nhanesDesign_mec_df, file = "produceddata/nhanesDesign_mec_df_13.rds")
+saveRDS(nhanesDesign_a2yr_df, file = "produceddata/nhanesDesign_a2yr_df_13.rds")
+saveRDS(nhanesDesign_b2yr_df, file = "produceddata/nhanesDesign_b2yr_df_13.rds")
+saveRDS(nhanesDesign_h2yr_df, file = "produceddata/nhanesDesign_h2yr_df_13.rds")
+
+
+
+```
+
+## Weighted analysis: Demographics --- 2 yr weights
+
+```{r S1-DataPrepR1-17, echo=FALSE, include=FALSE}
+
+NH_int_sex <- cat_small_tables_forsex(sex, nhanesTarget_int2yr)
+
+NH_int_cont_cat <- bind_rows(cont_small_tables_bysex(ridageyr, nhanesTarget_int2yr),
+                             cont_small_tables_bysex(indfmpir, nhanesTarget_int2yr),
+                             cat_small_tables_bysex(ethnicity, nhanesTarget_int2yr),
+                             cat_small_tables_bysex(edu, nhanesTarget_int2yr),
+                             cat_small_tables_bysex(smoker_home, nhanesTarget_int2yr)) %>% 
+  left_join(., select(vars_summary_13, -theme), by="var_name") %>% 
+  relocate(summary, .before=values) %>% 
+  select(-var_name)
+```
+
+Study participants by sex: Weighted statistics (percentage [95% CI]).
+
+`r NH_int_sex %>%  regulartable()%>% set_table_properties(layout = "autofit") %>% fontsize(size = 8, part = "body")`
+
+Demographic characteristics of study participants overall and by sex: Weighted statistics (mean (SE) and median [IQR] presented for the continuous variables and percentage [95% CI] for the categorical variables).
+
+
+`r NH_int_cont_cat %>%  regulartable() %>% set_table_properties(layout = "autofit") %>% fontsize(size = 8, part = "body")`
+
+## Weighted analysis: Nutrition day 1 Variables --- nutrition weights
+
+```{r S1-DataPrepR1-18, echo=FALSE, include=FALSE}
+NH_mec_cont_nutr <- data.frame()
+for (i in 1:length(nutrition1)){
+  k <- cont_small_tables_bysex(get(nutrition1[i]),nhanesTarget_drd1)
+  k$var_name <- nutrition1[i]
+  NH_mec_cont_nutr <- rbind(NH_mec_cont_nutr,k)
+}
+
+NH_mec_cont_nutr <- NH_mec_cont_nutr %>%
+  left_join(., select(vars_summary_13, -theme), by="var_name") %>%
+  relocate(summary, .before=values) %>% 
+  select(-var_name,-values)
+```
+
+Nutrition dietary variables of study participants overall and by sex: Weighted statistics (mean (SD) and median [IQR]).
+
+`r NH_mec_cont_nutr %>%  regulartable()%>% set_table_properties(layout = "autofit") %>% fontsize(size = 8, part = "body")`
+
+## Weighted analysis: Laboratory Categorical and Continuous Variables --- mec weights
+
+```{r S1-DataPrepR1-19, echo=FALSE, include=FALSE}
+cont_in_mec <- setdiff(wtmec2yr_13, catVarsLab)
+
+
+NH_mec_cont_lab <- data.frame()
+for (i in 1:length(cont_in_mec)){
+  k <- cont_small_tables_bysex(get(cont_in_mec[i]), nhanesTarget_mec)
+  k$var_name <- cont_in_mec[i]
+  NH_mec_cont_lab <- rbind(NH_mec_cont_lab,k)
+}
+
+NH_mec_cont <- bind_rows(NH_mec_cont_lab,
+                         cont_small_tables_bysex(bmxbmi_cdc_sds, nhanesTarget_mec),
+                         cont_small_tables_bysex(bmxbmi_cdc_perc, nhanesTarget_mec))
+
+NH_mec_cont <- NH_mec_cont %>%
+  left_join(., select(vars_summary_13, -theme), by="var_name") %>%
+  relocate(summary, .before=values) %>% 
+  select(-var_name,-values)
+
+
+
+NH_mec_cat <- bind_rows(cat_small_tables_bysex(physical_act, nhanesTarget_mec),
+                        cat_small_tables_bysex(bmxbmi_cat_perc, nhanesTarget_mec)) %>% 
+  left_join(., select(vars_summary_13, -theme), by="var_name") %>% 
+  relocate(summary, .before=values) %>% 
+  select(-var_name)
+```
+
+Laboratory characteristics of study participants overall and by sex: Weighted statistics (mean (SD) and median [IQR])).
+
+`r NH_mec_cont %>%  regulartable()%>% set_table_properties(layout = "autofit") %>% fontsize(size = 8, part = "body") %>% add_header("L", top=T)`
+
+
+Physical activity and BMI (cat.): Weighted statistics (percentage [95% CI])).
+
+`r NH_mec_cat %>%  regulartable()%>% set_table_properties(layout = "autofit") %>% fontsize(size = 8, part = "body")`
+
+## Weighted analysis: Laboratory Categorical and Continuous Variables --- subsample A weights
+
+```{r S1-DataPrepR1-20, echo=FALSE, include=FALSE}
+NH_a2yr <- data.frame()
+for (i in 1:length(wtsa2yr_13)){
+  k <- cont_small_tables_bysex(get(wtsa2yr_13[i]), nhanesTarget_a2yr)
+  k$var_name <- wtsa2yr_13[i]
+  NH_a2yr <- rbind(NH_a2yr,k)
+}
+
+
+NH_a2yr <- NH_a2yr %>%
+  left_join(., select(vars_summary_13, -theme), by="var_name") %>%
+  relocate(summary, .before=values) %>% 
+  select(-var_name,-values)
+
+```
+
+Laboratory characteristics of study participants overall and by sex: Weighted statistics (mean (SD) and median [IQR])).
+
+`r NH_a2yr %>%  regulartable() %>% set_table_properties(layout = "autofit") %>% fontsize(size = 8, part = "body") %>% add_header("L", top=T)`
+
+## Weighted analysis: Laboratory Categorical and Continuous Variables --- subsample B weights
+
+```{r S1-DataPrepR1-21, echo=FALSE, include=FALSE}
+NH_b2yr <- data.frame()
+for (i in 1:length(wtsb2yr_13)){
+  k <- cont_small_tables_bysex(get(wtsb2yr_13[i]), nhanesTarget_b2yr)
+  k$var_name <- wtsb2yr_13[i]
+  NH_b2yr <- rbind(NH_b2yr,k)
+}
+
+
+NH_b2yr <- NH_b2yr %>%
+  left_join(., select(vars_summary_13, -theme), by="var_name") %>%
+  relocate(summary, .before=values) %>% 
+  select(-var_name,-values)
+
+```
+
+Laboratory characteristics of study participants overall and by sex: Weighted statistics (mean (SD) and median [IQR])).
+
+`r NH_b2yr %>%  regulartable() %>% set_table_properties(layout = "autofit") %>% fontsize(size = 8, part = "body") %>% add_header("L", top=T)`
+
+## Weighted analysis: Laboratory Categorical and Continuous Variables --- subsample B weights
+
+```{r S1-DataPrepR1-22, echo=FALSE, include=FALSE}
+NH_h2yr <- data.frame()
+for (i in 1:length(wtsh2yr_13)){
+  k <- cont_small_tables_bysex(get(wtsh2yr_13[i]), nhanesTarget_h2yr)
+  k$var_name <- wtsh2yr_13[i]
+  NH_h2yr <- rbind(NH_h2yr,k)
+}
+
+
+NH_h2yr <- NH_h2yr %>%
+  left_join(., select(vars_summary_13, -theme), by="var_name") %>%
+  relocate(summary, .before=values) %>% 
+  select(-var_name,-values)
+
+```
+
+Laboratory characteristics of study participants overall and by sex: Weighted statistics (mean (SD) and median [IQR])).
+
+`r NH_h2yr %>%  regulartable() %>% set_table_properties(layout = "autofit") %>% fontsize(size = 8, part = "body") %>% add_header("L", top=T)`
+
+
+
+## QQ-plots
+
+```{r S1-DataPrepR1-23, echo=FALSE, include=TRUE}
+repl_final_total %>% 
+  filter(inAnalysis==TRUE) %>% 
+  ggplot(., aes(sample = bmxbmi_cdc_sds)) +
+  geom_qq() +
+  ggtitle(label = "QQplot of the Body Mass Index") + theme_minimal()
+```
+
+# Session Information
+
+```{r S1-DataPrepR1-24 }
+sessionInfo()
+```
+
+## References
+
+`r kable(report::cite_packages())`
+

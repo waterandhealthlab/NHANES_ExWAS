@@ -1,0 +1,1490 @@
+---
+title: "Environment-wide association study on body mass index of 12-18 year-old, US NHANES 2003-2004 and 2013-2014"
+author: "Water and Health Laboratory - Cyprus University of Technology"
+output:
+  word_document:
+    reference_docx: template.docx
+  html_document:
+    df_print: paged
+always_allow_html: yes
+editor_options:
+  chunk_output_type: console
+---
+
+
+```{r S2-RegAnalysisR1-1, echo= FALSE, include=FALSE}
+
+rm(list=ls())
+
+ipak <- function(pkg){
+  new.pkg <- pkg[!(pkg %in% installed.packages()[, "Package"])]
+  if (length(new.pkg)) 
+    install.packages(new.pkg, dependencies = TRUE)
+  sapply(pkg, require, character.only = TRUE) 
+}
+
+packages <- c("data.table","Hmisc", "DT","flextable",
+              "survey", "jtools","tidyverse", "patchwork",
+              "tableone", "broom", "knitr", "corrplot")
+
+ipak(packages)
+
+
+if(!dir.exists("figures/")){
+  dir.create("figures/")
+}
+
+if(!dir.exists("CorrCoefficientsResults/")){
+  dir.create("CorrCoefficientsResults/")
+}
+
+```
+
+
+```{r S2-RegAnalysisR1-2, include=FALSE}
+vars <- read.csv("vars_summary_used.csv")
+
+variable_categories <- vars %>%
+  group_by(type) %>%
+  summarize(variables = toString(variable)) 
+
+for(i in 1:nrow(variable_categories)){
+  print(i)
+  list_vars <- str_split(variable_categories[i,2], ", |,")[[1]]
+  name_of_list <- unlist(variable_categories[i,1])
+  
+  
+  print(name_of_list)
+  print(list_vars)
+  assign(name_of_list, list_vars, envir = .GlobalEnv)  
+  
+  if(str_detect(string = name_of_list, pattern = "^contVars[:alpha:]+|nutrition1")){
+    list_vars_tr <- paste0(list_vars, "_tr")
+    name_of_list_tr <- paste0(name_of_list, "_tr")
+    
+  assign(name_of_list_tr, list_vars_tr, envir = .GlobalEnv)
+  
+  rm(name_of_list_tr, list_vars_tr)
+  }
+  
+  rm(name_of_list, list_vars)
+}
+
+weight_var_cats_3 <- vars %>% 
+  group_by(weights_03, type) %>% 
+  summarise(n=n(), .groups = "drop") %>% 
+  group_by(type) %>% 
+  mutate(n_type=n())
+
+
+weight_var_cats_13 <- vars %>% 
+  group_by(weights_13, type) %>% 
+  summarise(n=n(), .groups = "drop") %>% 
+  group_by(type) %>% 
+  mutate(n_type=n())
+
+
+
+```
+
+
+```{r S2-RegAnalysisR1-3, echo=FALSE, include=FALSE}
+# reading survey design objects
+nhanesTarget_int2yr_03 <- readRDS("produceddata/nhanesTarget_int2yr_03.rds")
+nhanesTarget_drd1_03 <- readRDS("produceddata/nhanesTarget_drd1_03.rds")
+nhanesTarget_mec_03 <- readRDS("produceddata/nhanesTarget_mec_03.rds")
+nhanesTarget_a2yr_03 <- readRDS("produceddata/nhanesTarget_a2yr_03.rds")
+nhanesTarget_b2yr_03 <- readRDS("produceddata/nhanesTarget_b2yr_03.rds")
+nhanesTarget_c2yr_03 <- readRDS("produceddata/nhanesTarget_c2yr_03.rds")
+
+# reading dataframes
+nhanesDesign_int2yr_df_03 <- readRDS("produceddata/nhanesDesign_int2yr_df_03.rds")
+nhanesDesign_drd1_df_03 <- readRDS("produceddata/nhanesDesign_drd1_df_03.rds")
+nhanesDesign_mec_df_03 <- readRDS("produceddata/nhanesDesign_mec_df_03.rds")
+nhanesDesign_a2yr_df_03 <- readRDS("produceddata/nhanesDesign_a2yr_df_03.rds")
+nhanesDesign_b2yr_df_03 <- readRDS("produceddata/nhanesDesign_b2yr_df_03.rds")
+nhanesDesign_c2yr_df_03 <- readRDS("produceddata/nhanesDesign_c2yr_df_03.rds")
+
+vars_summary_03 <- readRDS("produceddata/vars_summary_all_2003.rds") %>% 
+  mutate(var_name=tolower(var_name))
+
+disc_final_total <- readRDS("produceddata/disc_final_total.rds")
+```
+
+# Dataset 2003-2004 (discovery)
+
+## Correlations between predictor variables 
+
+```{r S2-RegAnalysisR1-4, echo=FALSE}
+## create survey design object combining lab and nutri continuous variables using wtdrd1 weight
+
+nhanesDesign_drd1_df_03_corr <-  subset(disc_final_total[,c("seqn", "sdmvpsu", "sdmvstra", "wtdrd1", "inAnalysis",   
+                                                            nutrition1_tr, contVarsLab_tr)], !is.na(wtdrd1)) 
+                                                         
+
+nhanesDesign_drd1_corr <- svydesign(id  = ~sdmvpsu,
+                          strata  = ~sdmvstra,
+                          weights = ~wtdrd1,
+                          nest    = TRUE,
+                          data    = nhanesDesign_drd1_df_03_corr)
+
+
+# Here we use "subset" to tell "nhanesDesign" to look for our study population
+nhanesTarget_drd1_03_corr<- subset(nhanesDesign_drd1_corr, inAnalysis==TRUE)
+
+#creating matrix for all variables
+
+all_corr_matrix <- combn(c(nutrition1_tr, contVarsLab_tr), 2, simplify=T) %>% 
+  as.data.frame() 
+
+
+#transposing the dataframe
+all_corr_matrix_df <- as.data.frame(as.matrix(t(all_corr_matrix)))
+
+
+source("functions/corrs_function.R")
+```
+
+```{r S2-RegAnalysisR1-5, echo=FALSE}
+
+corrs_function(pairs_matrix_df = all_corr_matrix_df, survey_design = nhanesTarget_drd1_03_corr, vars_cat = "correlation03")
+```
+
+Correlation plot of prediction variables in 2003-2004 dataset and table with the correlation coefficients
+
+```{r S2-RegAnalysisR1-6, echo=FALSE, fig.height=11, fig.width=8.5}
+correlation03 %>%  
+  rename(var_name="variables_from") %>% 
+  mutate(var_name=str_replace(var_name, "_tr", "")) %>% 
+  left_join(., vars_summary_03, by = "var_name") %>% 
+  rename(variables_from="summary") %>%   
+  rename(original_variables_from=var_name) %>% 
+  rename(var_name="variables_to") %>% 
+  mutate(var_name=str_replace(var_name, "_tr", "")) %>% 
+  left_join(., vars_summary_03, by = "var_name") %>% 
+  rename(variables_to="summary")%>%   
+  rename(original_variables_to=var_name) %>%   
+  ggplot() +
+  geom_tile(aes(x=variables_from, y=variables_to, fill=corr)) +
+  scale_fill_gradient2(low = "#324472", mid="white", high="#A41410") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, size = 6),
+        axis.text.y = element_text(size = 6),
+        legend.position="bottom",
+        axis.title.x = element_blank(),axis.title.y = element_blank())
+
+vars_summary_03$var_name_tr <- paste0(vars_summary_03$var_name,"_tr")
+
+correlation03_all <- correlation03 %>%
+  mutate(corr=round(corr,4)) %>% 
+  # create a key to remove duplicates as correlation a to b is the same as correlation b to a
+  mutate(key=paste0(pmin(variables_to, variables_from), "|", pmax(variables_to, variables_from), "|", corr)) %>% 
+  group_by(key) %>% 
+  summarise(n=n()) %>% 
+  separate(col=key, into=c("variables_to", "variables_from", "corr"), sep = "\\|") %>% 
+  merge(.,vars_summary_03[,2:3], all.x=T, by.x="variables_from", by.y="var_name_tr") %>%
+  dplyr::rename(var_from=summary) %>%
+  merge(.,vars_summary_03[,2:3], all.x=T, by.x="variables_to", by.y="var_name_tr") %>%
+  dplyr::rename(var_to=summary)  %>%
+  select(c(var_from,var_to,corr)) 
+
+if(nrow(all_corr_matrix_df)==nrow(correlation03_all)){ 
+   print("The complete table with all the correlation coefficients can be found in the folder: CorrCoeffiencents_results in csv format (file name:correlation03_all.csv).")
+  } else{
+     print("The correlation matrix needs to be rechecked")
+    }
+
+saveRDS(correlation03, file = "produceddata/correlation03.rds")
+saveRDS(correlation03_all, file = "produceddata/correlation03_all.rds")
+
+write_csv(correlation03_all, file="CorrCoefficientsResults/correlation03_all.csv")
+
+```
+
+
+## Univariable analysis: 2003-2004 dataset
+
+
+```{r S2-RegAnalysisR1-7, echo=FALSE, include=TRUE, message=FALSE, warning=TRUE}
+  
+# remove all objects 
+rm(list=(setdiff(ls(), c(grep("^nhanesDesign", names(.GlobalEnv), value = TRUE),
+                         grep("^nhanesTarget", names(.GlobalEnv), value = TRUE),
+                         "bmi_cat", "bmi_cont", "nutrition1", "vars",
+                         grep("^wt|Vars|_tr$",names(.GlobalEnv),value=TRUE),
+                         "vars_summary_03", "corrs_function"))))
+
+
+# formulas
+formula_u<-"bmxbmi_cdc_sds ~ value"  #changed perc to sds
+
+
+results_u_mec_cont03 <-nhanesDesign_mec_df_03 %>%
+  # selecting only the contVarsLab_tr and contVarsMetals_tr
+  select(seqn, sdmvpsu, sdmvstra, wtmec2yr, bmxbmi_cdc_sds, 
+         all_of(contVarsLab_tr), all_of(contVarsMetals_tr),
+         inAnalysis) %>%
+  pivot_longer(cols=c(all_of(contVarsLab_tr), all_of(contVarsMetals_tr)), names_to = "variable", values_to = "value") %>% 
+  mutate(value=as.numeric(value)) %>%
+  group_by(variable) %>%
+  do(tidy(svyglm(formula_u, data = ., 
+                 design=subset(svydesign(id      = ~sdmvpsu,
+                                  strata  = ~sdmvstra,
+                                  weights = ~wtmec2yr,
+                                  nest    = TRUE,
+                                  data    = .), inAnalysis==TRUE)))) %>%
+  filter(term!="(Intercept)") %>% 
+  mutate(Section="Laboratory",
+         dataset="nhanesDesign_mec_df_03")
+
+
+results_u_mec_cat03 <-nhanesDesign_mec_df_03 %>% 
+  # selecting only the catVarsLab
+  select(seqn, sdmvpsu, sdmvstra, wtmec2yr, bmxbmi_cdc_sds, all_of(catVarsLab), inAnalysis) %>%
+  pivot_longer(cols=all_of(catVarsLab), names_to = "variable", values_to = "value") %>%
+  group_by(variable) %>%
+  do(tidy(svyglm(formula_u, data = ., 
+                 design=subset(svydesign(id      = ~sdmvpsu,
+                                  strata  = ~sdmvstra,
+                                  weights = ~wtmec2yr,
+                                  nest    = TRUE,
+                                  data    = .), inAnalysis==TRUE)))) %>%
+  filter(term!="(Intercept)") %>% 
+  mutate(Section="Questionnaire",
+         dataset="nhanesDesign_mec_df_03")
+
+
+results_u_drd1_03 <-nhanesDesign_drd1_df_03 %>%
+  # selecting only the nutrition1_tr
+  select(seqn, sdmvpsu, sdmvstra, wtdrd1, bmxbmi_cdc_sds, all_of(nutrition1_tr), inAnalysis) %>%
+  pivot_longer(cols=all_of(nutrition1_tr), names_to = "variable", values_to = "value") %>% 
+  mutate(value=as.numeric(value)) %>%
+  group_by(variable) %>%
+  do(tidy(svyglm(formula_u, data = ., 
+                 design=subset(svydesign(id      = ~sdmvpsu,
+                                  strata  = ~sdmvstra,
+                                  weights = ~wtdrd1,
+                                  nest    = TRUE,
+                                  data    = .), inAnalysis==TRUE)))) %>%
+  filter(term!="(Intercept)") %>% 
+  mutate(Section="Dietary",
+         dataset="nhanesDesign_drd1_df_03") %>% 
+  ungroup()
+
+results_u_a2yr_03 <-nhanesDesign_a2yr_df_03 %>%
+  # selecting only the contVarsArs_tr, contVarsMerc_tr and contVarsPfos_tr
+  select(seqn, sdmvpsu, sdmvstra, wtsa2yr, bmxbmi_cdc_sds, 
+         all_of(contVarsArs_tr), 
+         all_of(contVarsMerc_tr),
+         all_of(contVarsPfos_tr),
+         inAnalysis) %>%
+  pivot_longer(cols=c(all_of(contVarsArs_tr), 
+         all_of(contVarsMerc_tr),
+         all_of(contVarsPfos_tr)), names_to = "variable", values_to = "value") %>% 
+  mutate(value=as.numeric(value)) %>%
+  group_by(variable) %>%
+  do(tidy(svyglm(formula_u, data = ., 
+                 design=subset(svydesign(id      = ~sdmvpsu,
+                                  strata  = ~sdmvstra,
+                                  weights = ~wtsa2yr,
+                                  nest    = TRUE,
+                                  data    = .), inAnalysis==TRUE)))) %>%
+  filter(term!="(Intercept)") %>% 
+  mutate(Section="Laboratory",
+         dataset="nhanesDesign_a2yr_df_03") %>% 
+  ungroup()
+
+
+results_u_b2yr_03 <-nhanesDesign_b2yr_df_03 %>%
+  # selecting only the contVarsPah_tr and contVarsPht_tr
+  select(seqn, sdmvpsu, sdmvstra, wtsb2yr, bmxbmi_cdc_sds, 
+         all_of(contVarsPah_tr), 
+         all_of(contVarsPht_tr),
+         inAnalysis) %>%
+  pivot_longer(cols=c(all_of(contVarsPah_tr), 
+         all_of(contVarsPht_tr)), names_to = "variable", values_to = "value") %>% 
+  mutate(value=as.numeric(value)) %>%
+  group_by(variable) %>%
+  do(tidy(svyglm(formula_u, data = ., 
+                 design=subset(svydesign(id      = ~sdmvpsu,
+                                  strata  = ~sdmvstra,
+                                  weights = ~wtsb2yr,
+                                  nest    = TRUE,
+                                  data    = .), inAnalysis==TRUE)))) %>%
+  filter(term!="(Intercept)") %>% 
+  mutate(Section="Laboratory",
+         dataset="nhanesDesign_b2yr_df_03") %>% 
+  ungroup()
+
+results_u_c2yr_03 <-nhanesDesign_c2yr_df_03 %>%
+  # selecting only the contVarsIod_tr, contVarsPerchl_tr and contVarsPhe
+  select(seqn, sdmvpsu, sdmvstra, wtsc2yr, bmxbmi_cdc_sds, 
+         all_of(contVarsIod_tr), 
+         all_of(contVarsPerchl_tr), 
+         all_of(contVarsPhe),
+         inAnalysis) %>%
+  pivot_longer(cols=c(all_of(contVarsIod_tr), 
+         all_of(contVarsPerchl_tr), 
+         all_of(contVarsPhe)), names_to = "variable", values_to = "value") %>% 
+  mutate(value=as.numeric(value)) %>%
+  group_by(variable) %>%
+  do(tidy(svyglm(formula_u, data = ., 
+                 design=subset(svydesign(id      = ~sdmvpsu,
+                                  strata  = ~sdmvstra,
+                                  weights = ~wtsc2yr,
+                                  nest    = TRUE,
+                                  data    = .), inAnalysis==TRUE)))) %>%
+  filter(term!="(Intercept)") %>% 
+  mutate(Section="Laboratory",
+         dataset="nhanesDesign_c2yr_df_03") %>% 
+  ungroup()
+
+
+results_u_03 <- bind_rows(results_u_drd1_03, 
+                          results_u_mec_cat03, results_u_mec_cont03, 
+                          results_u_a2yr_03, results_u_b2yr_03, results_u_c2yr_03) %>% 
+  mutate(analysis="A. Univariable analysis 2003-2004")
+
+
+# FDR: Benjamini Hochberg
+results_u_03$fdr <- p.adjust(results_u_03$p.value, method='BH') 
+
+results_u_03$yintercept=-log10(max(results_u_03[which(results_u_03$fdr < 0.05), 'p.value']))
+##table with significant associations at fdr<0.05
+sig_results_u_03 <-results_u_03 %>% 
+  filter(fdr < 0.05) %>%
+  arrange(p.value) %>%
+  mutate_if(is.numeric, .funs = ~round(., digits=3)) %>% 
+  mutate(var_name=str_replace(variable, "_tr", "")) %>% 
+  left_join(., vars_summary_03, by = "var_name") %>%
+  ungroup() %>%
+  select(c(summary,Section,estimate,std.error,statistic,p.value,fdr)) 
+
+ggplot(results_u_03) +
+  geom_point(aes(x=estimate, y=-log10(p.value), color=Section), alpha=0.7) + 
+  geom_hline(yintercept=-log10(max(results_u_03[which(results_u_03$fdr < 0.05), 'p.value']))) +
+ scale_color_manual(values=c("#4d7298", "#8E3B46", "#ffb140")) +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  labs(caption="Univariable analysis - 2003-2004") +
+  guides(color=guide_legend(title="Variables"))
+
+```
+
+Univariate regression results - FDR - BH method <0.05
+
++ Total number of regressions: `r nrow(results_u_03)`
++ P-value<=0.05: `r nrow(filter(results_u_03, p.value<=0.05))`
+
+
+`r sig_results_u_03 %>% regulartable() %>% set_table_properties(layout = "autofit") %>% fontsize(size = 8, part = "body")`
+
+
+## Multivariable analysis: 2003-2004 dataset
+
+```{r S2-RegAnalysisR1-8, echo=FALSE, message=FALSE, warning=TRUE}
+
+# remove all objects 
+rm(list=(setdiff(ls(), c(grep("^nhanesDesign", names(.GlobalEnv), value = TRUE),
+                         grep("^nhanesTarget", names(.GlobalEnv), value = TRUE),
+                         "bmi_cat", "bmi_cont", "nutrition1", "vars",
+                         grep("^wt|Vars|_tr$",names(.GlobalEnv),value=TRUE),
+                         "vars_summary_03", "corrs_function", "results_u_03"))))
+
+  
+# formulas
+formula_m<-"bmxbmi_cdc_sds ~ ridageyr + sex + indfmpir + ethnicity + smoker_home + value"
+
+
+results_m_mec_cont03 <-nhanesDesign_mec_df_03 %>%
+  # selecting only the contVarsLab_tr
+  select(seqn, sdmvpsu, sdmvstra, wtmec2yr, ridageyr, sex, indfmpir, ethnicity, smoker_home, bmxbmi_cdc_sds, 
+         all_of(contVarsLab_tr), all_of(contVarsMetals_tr), inAnalysis) %>%
+  pivot_longer(cols=c(all_of(contVarsLab_tr), all_of(contVarsMetals_tr)), names_to = "variable", values_to = "value") %>% 
+  mutate(value=as.numeric(value)) %>%
+  group_by(variable) %>%
+  do(tidy(svyglm(formula_m, data = ., 
+                 design=subset(svydesign(id      = ~sdmvpsu,
+                                  strata  = ~sdmvstra,
+                                  weights = ~wtmec2yr,
+                                  nest    = TRUE,
+                                  data    = .), inAnalysis==TRUE)))) %>%
+  filter(term!="(Intercept)", term!="ridageyr",
+         term!="sexMale",
+         term!="ethnicityNon-Hispanic Black",
+         term!="ethnicityNon-Hispanic White",
+         term!="ethnicityOther",
+         term!="ethnicityOther Hispanic",
+         term!="indfmpir",
+         term!="smoker_homeYes") %>% 
+  mutate(Section="Laboratory",
+         dataset="nhanesDesign_mec_df_03") %>%
+  ungroup()
+
+
+results_m_mec_cat03 <-nhanesDesign_mec_df_03 %>%
+  # selecting only the catVarsLab
+  select(seqn, sdmvpsu, sdmvstra, wtmec2yr, ridageyr, sex, indfmpir, ethnicity, smoker_home, bmxbmi_cdc_sds, all_of(catVarsLab), inAnalysis) %>%
+  pivot_longer(cols=all_of(catVarsLab), names_to = "variable", values_to = "value") %>% 
+  #mutate(value=as.numeric(value)) %>%
+  group_by(variable) %>%
+  do(tidy(svyglm(formula_m, data = ., 
+                 design=subset(svydesign(id      = ~sdmvpsu,
+                                  strata  = ~sdmvstra,
+                                  weights = ~wtmec2yr,
+                                  nest    = TRUE,
+                                  data    = .), inAnalysis==TRUE)))) %>%
+  filter(term!="(Intercept)", term!="ridageyr",
+         term!="sexMale",
+         term!="ethnicityNon-Hispanic Black",
+         term!="ethnicityNon-Hispanic White",
+         term!="ethnicityOther",
+         term!="ethnicityOther Hispanic",
+         term!="indfmpir",
+         term!="smoker_homeYes") %>% 
+  mutate(Section="Questionnaire",
+         dataset="nhanesDesign_mec_df_03") %>% 
+  ungroup()
+
+
+
+results_m_drd1_03 <-nhanesDesign_drd1_df_03 %>%
+  select(seqn, sdmvpsu, sdmvstra, wtdrd1, ridageyr, sex, indfmpir, ethnicity, smoker_home, bmxbmi_cdc_sds, all_of(nutrition1_tr), inAnalysis) %>%
+  pivot_longer(cols=all_of(nutrition1_tr), names_to = "variable", values_to = "value") %>% 
+  mutate(value=as.numeric(value)) %>%
+  group_by(variable) %>%
+  do(tidy(svyglm(formula_m, data = ., 
+                 design=subset(svydesign(id      = ~sdmvpsu,
+                                  strata  = ~sdmvstra,
+                                  weights = ~wtdrd1,
+                                  nest    = TRUE,
+                                  data    = .), inAnalysis==TRUE)))) %>%
+  filter(term!="(Intercept)", term!="ridageyr",
+         term!="sexMale",
+         term!="ethnicityNon-Hispanic Black",
+         term!="ethnicityNon-Hispanic White",
+         term!="ethnicityOther",
+         term!="ethnicityOther Hispanic",
+         term!="indfmpir",
+         term!="smoker_homeYes") %>% 
+  mutate(Section="Dietary",
+         dataset="nhanesDesign_drd1_df_03") %>% 
+  ungroup()
+
+
+results_m_a2yr_03 <-nhanesDesign_a2yr_df_03 %>%
+  # selecting only the contVarsLab_tr
+  select(seqn, sdmvpsu, sdmvstra, wtsa2yr, ridageyr, sex, indfmpir, ethnicity, smoker_home, bmxbmi_cdc_sds, 
+         all_of(contVarsArs_tr), 
+         all_of(contVarsMerc_tr),
+         all_of(contVarsPfos_tr),
+         inAnalysis) %>%
+  pivot_longer(cols=c(all_of(contVarsArs_tr), 
+         all_of(contVarsMerc_tr),
+         all_of(contVarsPfos_tr)), names_to = "variable", values_to = "value") %>% 
+  mutate(value=as.numeric(value)) %>%
+  group_by(variable) %>%
+  do(tidy(svyglm(formula_m, data = ., 
+                 design=subset(svydesign(id      = ~sdmvpsu,
+                                  strata  = ~sdmvstra,
+                                  weights = ~wtsa2yr,
+                                  nest    = TRUE,
+                                  data    = .), inAnalysis==TRUE)))) %>%
+  filter(term!="(Intercept)", term!="ridageyr",
+         term!="sexMale",
+         term!="ethnicityNon-Hispanic Black",
+         term!="ethnicityNon-Hispanic White",
+         term!="ethnicityOther",
+         term!="ethnicityOther Hispanic",
+         term!="indfmpir",
+         term!="smoker_homeYes") %>%
+  filter(term!="(Intercept)") %>% 
+  mutate(Section="Laboratory",
+         dataset="nhanesDesign_a2yr_df_03") %>% 
+  ungroup()
+
+
+results_m_b2yr_03 <-nhanesDesign_b2yr_df_03 %>%
+  # selecting only the contVarsLab_tr
+  select(seqn, sdmvpsu, sdmvstra, wtsb2yr, ridageyr, sex, indfmpir, ethnicity, smoker_home, bmxbmi_cdc_sds, 
+         all_of(contVarsPah_tr), 
+         all_of(contVarsPht_tr),
+         inAnalysis) %>%
+  pivot_longer(cols=c(all_of(contVarsPah_tr), 
+         all_of(contVarsPht_tr)), names_to = "variable", values_to = "value") %>% 
+  mutate(value=as.numeric(value)) %>%
+  group_by(variable) %>%
+  do(tidy(svyglm(formula_m, data = ., 
+                 design=subset(svydesign(id      = ~sdmvpsu,
+                                  strata  = ~sdmvstra,
+                                  weights = ~wtsb2yr,
+                                  nest    = TRUE,
+                                  data    = .), inAnalysis==TRUE)))) %>%
+  filter(term!="(Intercept)", term!="ridageyr",
+         term!="sexMale",
+         term!="ethnicityNon-Hispanic Black",
+         term!="ethnicityNon-Hispanic White",
+         term!="ethnicityOther",
+         term!="ethnicityOther Hispanic",
+         term!="indfmpir",
+         term!="smoker_homeYes") %>%
+  mutate(Section="Laboratory",
+         dataset="nhanesDesign_b2yr_df_03") %>% 
+  ungroup()
+
+results_m_c2yr_03 <-nhanesDesign_c2yr_df_03 %>%
+  # selecting only the contVarsLab_tr
+  select(seqn, sdmvpsu, sdmvstra, wtsc2yr, ridageyr, sex, indfmpir, ethnicity, smoker_home, bmxbmi_cdc_sds, 
+         all_of(contVarsIod_tr), 
+         all_of(contVarsPerchl_tr), 
+         all_of(contVarsPhe),
+         inAnalysis) %>%
+  pivot_longer(cols=c(all_of(contVarsIod_tr), 
+         all_of(contVarsPerchl_tr), 
+         all_of(contVarsPhe)), names_to = "variable", values_to = "value") %>% 
+  mutate(value=as.numeric(value)) %>%
+  group_by(variable) %>%
+  do(tidy(svyglm(formula_m, data = ., 
+                 design=subset(svydesign(id      = ~sdmvpsu,
+                                  strata  = ~sdmvstra,
+                                  weights = ~wtsc2yr,
+                                  nest    = TRUE,
+                                  data    = .), inAnalysis==TRUE)))) %>%
+  filter(term!="(Intercept)", term!="ridageyr",
+         term!="sexMale",
+         term!="ethnicityNon-Hispanic Black",
+         term!="ethnicityNon-Hispanic White",
+         term!="ethnicityOther",
+         term!="ethnicityOther Hispanic",
+         term!="indfmpir",
+         term!="smoker_homeYes") %>%
+  mutate(Section="Laboratory",
+         dataset="nhanesDesign_c2yr_df_03") %>% 
+  ungroup()
+
+
+results_m_03 <- bind_rows(results_m_drd1_03, 
+                          results_m_mec_cat03, results_m_mec_cont03, 
+                          results_m_a2yr_03, results_m_b2yr_03, results_m_c2yr_03) %>% 
+  mutate(analysis="B. Multivariable analysis 2003-2004")
+
+
+# FDR: BH method
+results_m_03$fdr <- p.adjust(results_m_03$p.value, method='BH') 
+
+results_m_03$yintercept=-log10(max(results_m_03[which(results_m_03$fdr < 0.05), 'p.value']))
+
+##table with significant associations at fdr<0.05
+sig_results_m_03<-results_m_03 %>% 
+  filter(fdr < 0.05) %>%
+  arrange(p.value) %>%
+  mutate_if(is.numeric, .funs = ~round(., digits=3))%>% 
+  mutate(var_name=str_replace(variable, "_tr", "")) %>% 
+  left_join(., vars_summary_03, by = "var_name") %>%
+    ungroup() %>%
+  select(c(summary, Section, estimate,std.error,statistic,p.value,fdr))
+
+ggplot(results_m_03) +
+  geom_point(aes(x=estimate, y=-log10(p.value), color=Section), alpha=0.7) + 
+  geom_hline(yintercept=-log10(max(results_m_03[which(results_m_03$fdr < 0.05), 'p.value']))) +
+  scale_color_manual(values=c("#4d7298", "#8E3B46", "#ffb140")) +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  labs(caption="Multivariable analysis - 2003-2004") +
+  guides(color=guide_legend(title="Variables"))
+
+
+
+sig_0304 <- results_m_03 %>%
+  filter(fdr < 0.05) %>% 
+  mutate_if(is.numeric, .funs = ~round(., digits=3))
+
+figure3 <- bind_rows(results_u_03, results_m_03) %>% 
+  ggplot(.) +
+  geom_point(aes(x=estimate, y=-log10(p.value), color=Section), alpha=0.7) + 
+  geom_line(aes(x=estimate, y=yintercept)) +
+  facet_grid(~ analysis) +
+  scale_color_manual(values=c("#4d7298", "#8E3B46", "#ffb140")) +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  guides(color=guide_legend(title="Variables"))
+
+
+ggsave(figure3, device = "pdf", dpi = 300, filename  = "figures/figure3.pdf")
+ggsave(figure3, dpi = 300, filename  = "figures/figure3.png")
+
+```
+
+Multivariable regression results - FDR - BH method <0.05
+
++ Total number of regressions: `r nrow(results_m_03)`
++ P-value<=0.05: `r nrow(filter(results_m_03, p.value<=0.05))`
+
+
+`r sig_results_m_03 %>% regulartable() %>% set_table_properties(layout = "autofit") %>% fontsize(size = 8, part = "body")`
+
+
+
+### Plots of the predicted values per sex for the significant predictors (FDR<0.05)
+
+```{r S2-RegAnalysisR1-9, echo=FALSE, fig.height=6.5, fig.width=8.5}
+vars_sig_03 <- results_m_03 %>% 
+  filter(fdr < 0.05) %>%
+  arrange(p.value) %>%
+  mutate_if(is.numeric, .funs = ~round(., digits=3)) %>% 
+  mutate(var_name=str_replace(variable, "_tr", "")) %>% 
+  left_join(., vars_summary_03, by = "var_name")
+
+for(i in 1:nrow(vars_sig_03)){
+  
+  predictor <- vars_sig_03 %>% 
+    slice(i) %>% 
+    select(variable) %>% 
+    pull(variable)
+  dataset <- vars_sig_03 %>% 
+    slice(i) %>% 
+    select(dataset) %>% 
+    pull(dataset)
+
+  
+  if(dataset=="nhanesDesign_mec_df_03"){
+    s_design <- subset(svydesign(id = ~sdmvpsu,
+                                  strata  = ~sdmvstra,
+                                  weights = ~wtmec2yr,
+                                  nest    = TRUE,
+                                  data    = nhanesDesign_mec_df_03), inAnalysis==TRUE)
+    
+  model1 <- svyglm(paste0("bmxbmi_cdc_sds ~ ridageyr + sex + indfmpir + ethnicity + smoker_home + ", predictor), 
+                   data = nhanesDesign_mec_df_03, design=s_design)
+ 
+  
+  print(sjPlot::plot_model(model1, type = "pred", terms = c(predictor, "sex"), show.data = T) +
+    theme_minimal() + 
+    theme(legend.position = "bottom") +
+    labs(y="BMI sds", x=vars_sig_03[i, "summary"], title=NULL, caption="Predicted values - 2003-2004"))
+  
+ 
+  
+  }
+  
+    if(dataset=="nhanesDesign_drd1_df_03"){
+    s_design <- subset(svydesign(id = ~sdmvpsu,
+                                  strata  = ~sdmvstra,
+                                  weights = ~wtdrd1,
+                                  nest    = TRUE,
+                                  data    = nhanesDesign_drd1_df_03), inAnalysis==TRUE)
+  model1 <- svyglm(paste0("bmxbmi_cdc_sds ~ ridageyr + sex + indfmpir + ethnicity + smoker_home + ", predictor), data = nhanesDesign_drd1_df_03, design=s_design)
+ 
+  
+  print(sjPlot::plot_model(model1, type = "pred", terms = c(predictor, "sex"), show.data = T) +
+    theme_minimal() + 
+    theme(legend.position = "bottom") +
+    labs(y="BMI sds", x=vars_sig_03[i, "summary"], title=NULL, caption="Predicted values - 2003-2004"))
+  
+  } 
+   rm(model1, s_design, predictor, dataset)
+}
+```
+
+
+# Dataset 2013-2014 (replication)
+
+```{r S2-RegAnalysisR1-10, echo=FALSE}
+# remove all objects 
+rm(list=(setdiff(ls(), c(grep("^nhanesDesign", names(.GlobalEnv), value = TRUE),
+                         grep("^nhanesTarget", names(.GlobalEnv), value = TRUE),
+                         "bmi_cat", "bmi_cont", "nutrition1", "vars",
+                         grep("^wt|Vars|_tr$",names(.GlobalEnv),value=TRUE),
+                         "nutr_corr_matrix2",
+                         "vars_summary_03", "sig_0304", 
+                         "corrs_function", "results_u_03"))))
+
+# reading survey design objects
+nhanesTarget_int2yr_13 <- readRDS("produceddata/nhanesTarget_int2yr_13.rds")
+nhanesTarget_drd1_13 <- readRDS("produceddata/nhanesTarget_drd1_13.rds")
+nhanesTarget_mec_13 <- readRDS("produceddata/nhanesTarget_mec_13.rds") 
+nhanesTarget_a2yr_13 <- readRDS("produceddata/nhanesTarget_a2yr_13.rds")
+nhanesTarget_b2yr_13 <- readRDS("produceddata/nhanesTarget_b2yr_13.rds")
+nhanesTarget_h2yr_13 <- readRDS("produceddata/nhanesTarget_h2yr_13.rds")
+
+# reading dataframes
+nhanesDesign_int2yr_df_13 <- readRDS("produceddata/nhanesDesign_int2yr_df_13.rds")
+nhanesDesign_drd1_df_13 <- readRDS("produceddata/nhanesDesign_drd1_df_13.rds")
+nhanesDesign_mec_df_13 <- readRDS("produceddata/nhanesDesign_mec_df_13.rds")
+nhanesDesign_a2yr_df_13 <- readRDS("produceddata/nhanesDesign_a2yr_df_13.rds")
+nhanesDesign_b2yr_df_13 <- readRDS("produceddata/nhanesDesign_b2yr_df_13.rds")
+nhanesDesign_h2yr_df_13 <- readRDS("produceddata/nhanesDesign_h2yr_df_13.rds")
+
+vars_summary_13 <- readRDS("produceddata/vars_summary_all_2013.rds")
+repl_final_total <- readRDS("produceddata/repl_final_total.rds")
+```
+
+## Correlations between predictor variables 
+
+```{r S2-RegAnalysisR1-11, echo=FALSE,  fig.width=7, fig.height=9}
+
+# create survey design object combining lab and nutri continuous variables using wtdrd1 weight
+
+nhanesDesign_drd1_df_13_corr <-  subset(repl_final_total[,c("seqn", "sdmvpsu", "sdmvstra", "wtdrd1", "inAnalysis"  ,  catVars , contVars , nutrition1_tr ,contVarsLab_tr )]  , !is.na(wtdrd1)) 
+
+#XA: i removed from here the non-transformed vars
+
+nhanesDesign_drd1_corr <- svydesign(id  = ~sdmvpsu,
+                          strata  = ~sdmvstra,
+                          weights = ~wtdrd1,
+                          nest    = TRUE,
+                          data    = nhanesDesign_drd1_df_13_corr)
+
+# Here we use "subset" to tell "nhanesDesign" to look for our study population
+nhanesTarget_drd1_13_corr<- subset(nhanesDesign_drd1_corr, inAnalysis==TRUE)
+
+
+#creating matrix for all variables
+
+all_corr_matrix <- combn(c(nutrition1_tr, contVarsLab_tr), 2, simplify=T) %>% 
+  as.data.frame() 
+
+
+#transposing the dataframe
+all_corr_matrix_df <- as.data.frame(as.matrix(t(all_corr_matrix)))
+
+
+corrs_function(pairs_matrix_df = all_corr_matrix_df, survey_design = nhanesTarget_drd1_13_corr, vars_cat = "correlation13")
+
+
+correlation13 %>%  
+  rename(var_name="variables_from") %>% 
+  mutate(var_name=str_replace(var_name, "_tr", "")) %>% 
+  left_join(., vars_summary_13, by = "var_name") %>% 
+  rename(variables_from="summary") %>%   
+  rename(original_variables_from=var_name) %>% 
+  rename(var_name="variables_to") %>% 
+  mutate(var_name=str_replace(var_name, "_tr", "")) %>% 
+  left_join(., vars_summary_13, by = "var_name") %>% 
+  rename(variables_to="summary")%>%   
+  rename(original_variables_to=var_name) %>% 
+  ggplot() +
+  geom_tile(aes(x=variables_from, y=variables_to, fill=corr)) +
+  scale_fill_gradient2(low = "#324472", mid="white", high="#A41410") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, size = 6),
+        axis.text.y = element_text(size = 6),
+        legend.position="bottom",
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank())
+
+vars_summary_13$var_name_tr <- paste0(vars_summary_13$var_name,"_tr")
+```
+
+
+Correlation plot of prediction variables in 2013-2014 dataset
+
+```{r S2-RegAnalysisR1-12, echo=FALSE, message=FALSE, warning=TRUE}
+correlation13_all <- correlation13 %>% 
+  mutate(corr=round(corr,4)) %>% 
+  # create a key to remove duplicates as correlation a to b is the same as correlation b to a
+  mutate(key=paste0(pmin(variables_to, variables_from), "|", pmax(variables_to, variables_from), "|", corr)) %>% 
+  group_by(key) %>% 
+  summarise(n=n()) %>% 
+  separate(col=key, into=c("variables_to", "variables_from", "corr"), sep = "\\|") %>% 
+  merge(., vars_summary_13[,2:3], all.x=T, by.x="variables_from", by.y="var_name_tr") %>%
+  dplyr::rename(var_from=summary) %>%
+  merge(.,vars_summary_13[,2:3], all.x=T, by.x="variables_to", by.y="var_name_tr") %>%
+  dplyr::rename(var_to=summary)  %>%
+  select(c(var_from,var_to,corr)) 
+
+if(nrow(all_corr_matrix_df)==nrow(correlation13_all)){ 
+   print("The complete table with all the correlation coefficients can be found in the folder: CorrCoeffiencents_results in csv format (file name:correlation13_all.csv).")
+  } else{
+     print("The correlation matrix needs to be rechecked")
+    }
+
+
+
+saveRDS(correlation13, file = "produceddata/correlation13.rds")
+saveRDS(correlation13_all, file = "produceddata/correlation13_all.rds")
+
+write_csv(correlation13_all, file="CorrCoefficientsResults/correlation13_all.csv")
+
+```
+
+
+# Univariable regressions: dataset 2013-2014
+
+
+```{r S2-RegAnalysisR1-13, echo=FALSE, include=TRUE,message=FALSE, warning=TRUE}
+
+# remove all objects 
+rm(list=(setdiff(ls(), c(grep("^nhanesDesign", names(.GlobalEnv), value = TRUE),
+                         grep("^nhanesTarget", names(.GlobalEnv), value = TRUE),
+                         "bmi_cat", "bmi_cont", "nutrition1", "vars",
+                         grep("^wt|Vars|_tr$",names(.GlobalEnv),value=TRUE),
+                         "nutr_corr_matrix2",
+                         "vars_summary_03", "vars_summary_13",
+                         "sig_0304", 
+                         "corrs_function", "results_u_03"))))
+
+#formulas
+formula_u<-"bmxbmi_cdc_sds ~ value"  #changed perc to sds
+
+
+results_u_mec_cont13 <-nhanesDesign_mec_df_13 %>%
+  # selecting only the contVarsLab_tr
+  select(seqn, sdmvpsu, sdmvstra, wtmec2yr, bmxbmi_cdc_sds, 
+         all_of(contVarsLab_tr), 
+         inAnalysis) %>%
+  pivot_longer(cols=all_of(contVarsLab_tr), names_to = "variable", values_to = "value") %>% 
+  mutate(value=as.numeric(value)) %>%
+  group_by(variable) %>%
+  do(tidy(svyglm(formula_u, data = ., 
+                 design=subset(svydesign(id      = ~sdmvpsu,
+                                  strata  = ~sdmvstra,
+                                  weights = ~wtmec2yr,
+                                  nest    = TRUE,
+                                  data    = .), inAnalysis==TRUE)))) %>%
+  filter(term!="(Intercept)") %>% 
+  mutate(Section="Laboratory",
+         dataset="nhanesDesign_mec_df_13")
+
+
+results_u_mec_cat13 <-nhanesDesign_mec_df_13 %>% 
+  # selecting only the caVarsLab
+  select(seqn, sdmvpsu, sdmvstra, wtmec2yr, bmxbmi_cdc_sds, all_of(catVarsLab), inAnalysis) %>%
+  pivot_longer(cols=all_of(catVarsLab), names_to = "variable", values_to = "value") %>%
+  group_by(variable) %>%
+  do(tidy(svyglm(formula_u, data = ., 
+                 design=subset(svydesign(id      = ~sdmvpsu,
+                                  strata  = ~sdmvstra,
+                                  weights = ~wtmec2yr,
+                                  nest    = TRUE,
+                                  data    = .), inAnalysis==TRUE)))) %>%
+  filter(term!="(Intercept)") %>% 
+  mutate(Section="Questionnaire",
+         dataset="nhanesDesign_mec_df_13")
+
+
+results_u_drd1_13 <-nhanesDesign_drd1_df_13 %>%
+  # selecting only the contVarsLab_tr
+  select(seqn, sdmvpsu, sdmvstra, wtdrd1, bmxbmi_cdc_sds, all_of(nutrition1_tr), inAnalysis) %>%
+  pivot_longer(cols=all_of(nutrition1_tr), names_to = "variable", values_to = "value") %>% 
+  mutate(value=as.numeric(value)) %>%
+  group_by(variable) %>%
+  do(tidy(svyglm(formula_u, data = ., 
+                 design=subset(svydesign(id      = ~sdmvpsu,
+                                  strata  = ~sdmvstra,
+                                  weights = ~wtdrd1,
+                                  nest    = TRUE,
+                                  data    = .), inAnalysis==TRUE)))) %>%
+  filter(term!="(Intercept)") %>% 
+  mutate(Section="Dietary",
+         dataset="nhanesDesign_drd1_df_13") %>% 
+  ungroup()
+
+results_u_a2yr_13 <-nhanesDesign_a2yr_df_13 %>%
+  # selecting only the contVarsLab_tr
+  select(seqn, sdmvpsu, sdmvstra, wtsa2yr, bmxbmi_cdc_sds, 
+         all_of(contVarsArs_tr), 
+         all_of(contVarsIod_tr), 
+         all_of(contVarsMerc_tr),
+         all_of(contVarsPah_tr),
+         all_of(contVarsPerchl_tr),
+         inAnalysis) %>%
+  pivot_longer(cols=c(all_of(contVarsArs_tr),
+         all_of(contVarsIod_tr), 
+         all_of(contVarsMerc_tr),
+         all_of(contVarsPah_tr),
+         all_of(contVarsPerchl_tr)), names_to = "variable", values_to = "value") %>% 
+  mutate(value=as.numeric(value)) %>%
+  group_by(variable) %>%
+  do(tidy(svyglm(formula_u, data = ., 
+                 design=subset(svydesign(id      = ~sdmvpsu,
+                                  strata  = ~sdmvstra,
+                                  weights = ~wtsa2yr,
+                                  nest    = TRUE,
+                                  data    = .), inAnalysis==TRUE)))) %>%
+  filter(term!="(Intercept)") %>% 
+  mutate(Section="Laboratory",
+         dataset="nhanesDesign_a2yr_df_13") %>% 
+  ungroup()
+
+
+results_u_b2yr_13 <-nhanesDesign_b2yr_df_13 %>%
+  # selecting only the contVarsLab_tr
+  select(seqn, sdmvpsu, sdmvstra, wtsb2yr, bmxbmi_cdc_sds, 
+         all_of(contVarsPfos_tr),
+         all_of(contVarsPhe_tr), 
+         all_of(contVarsPht_tr),
+         inAnalysis) %>%
+  pivot_longer(cols=c(all_of(contVarsPfos_tr),
+         all_of(contVarsPhe_tr), 
+         all_of(contVarsPht_tr)), names_to = "variable", values_to = "value") %>% 
+  mutate(value=as.numeric(value)) %>%
+  group_by(variable) %>%
+  do(tidy(svyglm(formula_u, data = ., 
+                 design=subset(svydesign(id      = ~sdmvpsu,
+                                  strata  = ~sdmvstra,
+                                  weights = ~wtsb2yr,
+                                  nest    = TRUE,
+                                  data    = .), inAnalysis==TRUE)))) %>%
+  filter(term!="(Intercept)") %>% 
+  mutate(Section="Laboratory",
+         dataset="nhanesDesign_b2yr_df_13") %>% 
+  ungroup()
+
+results_u_h2yr_13 <-nhanesDesign_h2yr_df_13 %>%
+  # selecting only the contVarsLab_tr
+  select(seqn, sdmvpsu, sdmvstra, wtsh2yr, bmxbmi_cdc_sds, 
+         all_of(contVarsMetals_tr), 
+         inAnalysis) %>%
+  pivot_longer(cols=all_of(contVarsMetals_tr), names_to = "variable", values_to = "value") %>% 
+  mutate(value=as.numeric(value)) %>%
+  group_by(variable) %>%
+  do(tidy(svyglm(formula_u, data = ., 
+                 design=subset(svydesign(id      = ~sdmvpsu,
+                                  strata  = ~sdmvstra,
+                                  weights = ~wtsh2yr,
+                                  nest    = TRUE,
+                                  data    = .), inAnalysis==TRUE)))) %>%
+  filter(term!="(Intercept)") %>% 
+  mutate(Section="Laboratory",
+         dataset="nhanesDesign_h2yr_df_13") %>% 
+  ungroup()
+
+
+results_u_13 <- bind_rows(results_u_drd1_13, 
+                          results_u_mec_cat13, results_u_mec_cont13, 
+                          results_u_a2yr_13, results_u_b2yr_13, results_u_h2yr_13) %>% 
+  mutate(analysis="A. Univariable analysis 2013-2014")
+
+#FDR correction: BH method
+results_u_13$fdr <- p.adjust(results_u_13$p.value, method='BH') 
+
+results_u_13$yintercept=-log10(max(results_u_13[which(results_u_13$fdr < 0.05), 'p.value']))
+
+##table with significant associations at fdr<0.05
+sig_results_u_13<-results_u_13 %>% 
+  filter(fdr < 0.05) %>%
+  arrange(p.value) %>%
+  mutate_if(is.numeric, .funs = ~round(., digits=3)) %>% 
+  mutate(var_name=str_replace(variable, "_tr", "")) %>% 
+  left_join(., vars_summary_13, by = "var_name") %>%
+  ungroup() %>%
+  select(c(summary,Section,estimate,std.error,statistic,p.value,fdr))
+
+ggplot(results_u_13) +
+  geom_point(aes(x=estimate, y=-log10(p.value), color=Section), alpha=0.7) + 
+  geom_hline(yintercept=-log10(max(results_u_13[which(results_u_13$fdr < 0.05), 'p.value']))) +
+  scale_color_manual(values=c("#4d7298", "#8E3B46", "#ffb140")) +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  labs(caption = "Univariable analysis - 2013-2014") +
+  guides(color=guide_legend(title="Variables")) 
+
+```
+
+
+Univariate regression results - FDR - BH method <0.05
+
+
++ Total number of regressions: `r nrow(results_u_13)`
++ P-value<=0.05: `r nrow(filter(results_u_13, p.value<=0.05))`
+
+
+`r sig_results_u_13 %>% regulartable() %>% set_table_properties(layout = "autofit") %>% fontsize(size = 8, part = "body")`
+
+# Multivariable regressions: dataset 2013-2014
+
+```{r S2-RegAnalysisR1-14, echo=FALSE, message=FALSE, warning=TRUE}
+# remove all objects 
+rm(list=(setdiff(ls(), c(grep("^nhanesDesign", names(.GlobalEnv), value = TRUE),
+                         grep("^nhanesTarget", names(.GlobalEnv), value = TRUE),
+                         "bmi_cat", "bmi_cont", "nutrition1", "vars",
+                         grep("^wt|Vars|_tr$",names(.GlobalEnv),value=TRUE),
+                         "nutr_corr_matrix2",
+                         "vars_summary_03", "vars_summary_13",
+                         "sig_0304", 
+                         "corrs_function", "results_u_13"))))
+
+
+# formulas
+formula_m<-"bmxbmi_cdc_sds ~ ridageyr + sex + indfmpir + ethnicity + smoker_home + value"
+
+
+results_m_mec_cont13 <-nhanesDesign_mec_df_13 %>%
+  # selecting only the contVarsLab_tr
+  select(seqn, sdmvpsu, sdmvstra, wtmec2yr, ridageyr, sex, indfmpir, ethnicity, smoker_home, bmxbmi_cdc_sds, 
+         all_of(contVarsLab_tr), inAnalysis) %>%
+  pivot_longer(cols=all_of(contVarsLab_tr), names_to = "variable", values_to = "value") %>% 
+  mutate(value=as.numeric(value)) %>%
+  group_by(variable) %>%
+  do(tidy(svyglm(formula_m, data = ., 
+                 design=subset(svydesign(id      = ~sdmvpsu,
+                                  strata  = ~sdmvstra,
+                                  weights = ~wtmec2yr,
+                                  nest    = TRUE,
+                                  data    = .), inAnalysis==TRUE)))) %>%
+  filter(term!="(Intercept)", term!="ridageyr",
+         term!="sexMale",
+         term!="ethnicityNon-Hispanic Black",
+         term!="ethnicityNon-Hispanic White",
+         term!="ethnicityOther",
+         term!="ethnicityOther Hispanic",
+         term!="indfmpir",
+         term!="smoker_homeYes") %>% 
+  mutate(Section="Laboratory",
+         dataset="nhanesDesign_mec_df_13") %>%
+  ungroup()
+
+
+results_m_mec_cat13 <-nhanesDesign_mec_df_13 %>%
+  # selecting only the catVarsLab
+  select(seqn, sdmvpsu, sdmvstra, wtmec2yr, ridageyr, sex, indfmpir, ethnicity, smoker_home, bmxbmi_cdc_sds, all_of(catVarsLab), inAnalysis) %>%
+  pivot_longer(cols=all_of(catVarsLab), names_to = "variable", values_to = "value") %>% 
+  #mutate(value=as.numeric(value)) %>%
+  group_by(variable) %>%
+  do(tidy(svyglm(formula_m, data = ., 
+                 design=subset(svydesign(id      = ~sdmvpsu,
+                                  strata  = ~sdmvstra,
+                                  weights = ~wtmec2yr,
+                                  nest    = TRUE,
+                                  data    = .), inAnalysis==TRUE)))) %>%
+  filter(term!="(Intercept)", term!="ridageyr",
+         term!="sexMale",
+         term!="ethnicityNon-Hispanic Black",
+         term!="ethnicityNon-Hispanic White",
+         term!="ethnicityOther",
+         term!="ethnicityOther Hispanic",
+         term!="indfmpir",
+         term!="smoker_homeYes") %>% 
+  mutate(Section="Questionnaire",
+         dataset="nhanesDesign_mec_df_13") %>% 
+  ungroup()
+
+
+
+results_m_drd1_13 <-nhanesDesign_drd1_df_13 %>%
+  select(seqn, sdmvpsu, sdmvstra, wtdrd1, ridageyr, sex, indfmpir, ethnicity, smoker_home, bmxbmi_cdc_sds, all_of(nutrition1_tr), inAnalysis) %>%
+  pivot_longer(cols=all_of(nutrition1_tr), names_to = "variable", values_to = "value") %>% 
+  mutate(value=as.numeric(value)) %>%
+  group_by(variable) %>%
+  do(tidy(svyglm(formula_m, data = ., 
+                 design=subset(svydesign(id      = ~sdmvpsu,
+                                  strata  = ~sdmvstra,
+                                  weights = ~wtdrd1,
+                                  nest    = TRUE,
+                                  data    = .), inAnalysis==TRUE)))) %>%
+  filter(term!="(Intercept)", term!="ridageyr",
+         term!="sexMale",
+         term!="ethnicityNon-Hispanic Black",
+         term!="ethnicityNon-Hispanic White",
+         term!="ethnicityOther",
+         term!="ethnicityOther Hispanic",
+         term!="indfmpir",
+         term!="smoker_homeYes") %>% 
+  mutate(Section="Dietary",
+         dataset="nhanesDesign_drd1_df_13") %>% 
+  ungroup()
+
+
+results_m_a2yr_13 <-nhanesDesign_a2yr_df_13 %>%
+  # selecting only the sub-sample A variables
+  select(seqn, sdmvpsu, sdmvstra, wtsa2yr, ridageyr, sex, indfmpir, ethnicity, smoker_home, bmxbmi_cdc_sds, 
+         all_of(contVarsArs_tr), 
+         all_of(contVarsIod_tr), 
+         all_of(contVarsMerc_tr),
+         all_of(contVarsPah_tr),
+         all_of(contVarsPerchl_tr),
+         inAnalysis) %>%
+  pivot_longer(cols=c(all_of(contVarsArs_tr), 
+         all_of(contVarsIod_tr), 
+         all_of(contVarsMerc_tr),
+         all_of(contVarsPah_tr),
+         all_of(contVarsPerchl_tr)), names_to = "variable", values_to = "value") %>% 
+  mutate(value=as.numeric(value)) %>%
+  group_by(variable) %>%
+  do(tidy(svyglm(formula_m, data = ., 
+                 design=subset(svydesign(id      = ~sdmvpsu,
+                                  strata  = ~sdmvstra,
+                                  weights = ~wtsa2yr,
+                                  nest    = TRUE,
+                                  data    = .), inAnalysis==TRUE)))) %>%
+  filter(term!="(Intercept)", term!="ridageyr",
+         term!="sexMale",
+         term!="ethnicityNon-Hispanic Black",
+         term!="ethnicityNon-Hispanic White",
+         term!="ethnicityOther",
+         term!="ethnicityOther Hispanic",
+         term!="indfmpir",
+         term!="smoker_homeYes") %>%
+  filter(term!="(Intercept)") %>% 
+  mutate(Section="Laboratory",
+         dataset="nhanesDesign_a2yr_df_13") %>% 
+  ungroup()
+
+
+results_m_b2yr_13 <-nhanesDesign_b2yr_df_13 %>%
+  # selecting the sub-sample B variables
+  select(seqn, sdmvpsu, sdmvstra, wtsb2yr, ridageyr, sex, indfmpir, ethnicity, smoker_home, bmxbmi_cdc_sds, 
+         all_of(contVarsPfos_tr),
+         all_of(contVarsPhe_tr), 
+         all_of(contVarsPht_tr),
+         inAnalysis) %>%
+  pivot_longer(cols=c( all_of(contVarsPfos_tr),
+         all_of(contVarsPhe_tr), 
+         all_of(contVarsPht_tr)), names_to = "variable", values_to = "value") %>% 
+  mutate(value=as.numeric(value)) %>%
+  group_by(variable) %>%
+  do(tidy(svyglm(formula_m, data = ., 
+                 design=subset(svydesign(id      = ~sdmvpsu,
+                                  strata  = ~sdmvstra,
+                                  weights = ~wtsb2yr,
+                                  nest    = TRUE,
+                                  data    = .), inAnalysis==TRUE)))) %>%
+  filter(term!="(Intercept)", term!="ridageyr",
+         term!="sexMale",
+         term!="ethnicityNon-Hispanic Black",
+         term!="ethnicityNon-Hispanic White",
+         term!="ethnicityOther",
+         term!="ethnicityOther Hispanic",
+         term!="indfmpir",
+         term!="smoker_homeYes") %>%
+  mutate(Section="Laboratory",
+         dataset="nhanesDesign_b2yr_df_13") %>% 
+  ungroup()
+
+results_m_h2yr_13 <-nhanesDesign_h2yr_df_13 %>%
+  # selecting only the metals that have the h2yr weight
+  select(seqn, sdmvpsu, sdmvstra, wtsh2yr, ridageyr, sex, indfmpir, ethnicity, smoker_home, bmxbmi_cdc_sds, 
+         all_of(contVarsMetals_tr),
+         inAnalysis) %>%
+  pivot_longer(cols=all_of(contVarsMetals_tr), 
+                      names_to = "variable", values_to = "value") %>% 
+  mutate(value=as.numeric(value)) %>%
+  group_by(variable) %>%
+  do(tidy(svyglm(formula_m, data = ., 
+                 design=subset(svydesign(id      = ~sdmvpsu,
+                                  strata  = ~sdmvstra,
+                                  weights = ~wtsh2yr,
+                                  nest    = TRUE,
+                                  data    = .), inAnalysis==TRUE)))) %>%
+  filter(term!="(Intercept)", term!="ridageyr",
+         term!="sexMale",
+         term!="ethnicityNon-Hispanic Black",
+         term!="ethnicityNon-Hispanic White",
+         term!="ethnicityOther",
+         term!="ethnicityOther Hispanic",
+         term!="indfmpir",
+         term!="smoker_homeYes") %>%
+  mutate(Section="Laboratory",
+         dataset="nhanesDesign_c2yr_df_13") %>% 
+  ungroup()
+
+
+results_m_13 <- bind_rows(results_m_mec_cont13, results_m_mec_cat13,
+                          results_m_drd1_13,
+                          results_m_a2yr_13, results_m_b2yr_13, 
+                          results_m_h2yr_13)%>% 
+  mutate(analysis="B. Multivariable analysis 2013-2014")
+
+# FDR correction: BH method
+results_m_13$fdr <- p.adjust(results_m_13$p.value, method='BH') 
+
+results_m_13$yintercept=-log10(max(results_m_13[which(results_m_13$fdr < 0.05), 'p.value']))
+
+##table with significant associations at fdr<0.05
+sig_results_m_13<-results_m_13 %>% 
+  filter(fdr < 0.05) %>%
+  arrange(p.value) %>%
+  mutate_if(is.numeric, .funs = ~round(., digits=3)) %>% 
+  mutate(var_name=str_replace(variable, "_tr", "")) %>% 
+  left_join(., vars_summary_13, by = "var_name") %>%
+  ungroup() %>%
+  select(c(summary,Section,estimate,std.error,statistic,p.value,fdr))
+
+ggplot(results_m_13) +
+  geom_point(aes(x=estimate, y=-log10(p.value), color=Section), alpha=0.7) + 
+  geom_hline(yintercept=-log10(max(results_m_13[which(results_m_13$fdr < 0.05), 'p.value']))) +
+  scale_color_manual(values=c("#4d7298", "#8E3B46", "#ffb140")) +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  guides(color=guide_legend(title="Variables"))
+
+
+figure4 <- bind_rows(results_u_13, results_m_13) %>% 
+  ggplot(.) +
+  geom_point(aes(x=estimate, y=-log10(p.value), color=Section), alpha=0.7) + 
+  geom_line(aes(x=estimate, y=yintercept)) +
+  facet_grid(~ analysis) +
+  scale_color_manual(values=c("#4d7298", "#8E3B46", "#ffb140")) +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  guides(color=guide_legend(title="Variables"))
+
+
+ggsave(figure4, device = "pdf",dpi = 300, filename  = "figures/figure4.pdf")
+ggsave(figure4, dpi = 300, filename  = "figures/figure4.png")
+
+sig_1314 <- results_m_13 %>%
+  filter(fdr < 0.05) %>% 
+  mutate_if(is.numeric, .funs = ~round(., digits=3))
+
+
+sig_total <- inner_join(sig_0304,sig_1314, by="variable") %>% 
+  mutate(var_name=str_replace(variable, "_tr", "")) %>% 
+  left_join(., vars_summary_13, by = "var_name") %>%
+  select(variable,var_name,summary,Section.x) %>%
+  dplyr::rename(Section=Section.x)
+
+```
+
+
+Multivariable regression results - FDR - BH method <0.05
+
+
++ Total number of regressions: `r nrow(results_m_13)`
++ P-value<=0.05: `r nrow(filter(results_m_13, p.value<=0.05))`
+
+
+`r sig_results_m_13 %>% regulartable() %>% set_table_properties(layout = "autofit") %>% fontsize(size = 8, part = "body")`
+
+
+
+## Plots of the predicted values per sex for the significant predictors (FDR<0.05)
+
+```{r S2-RegAnalysisR1-15, echo=FALSE, fig.height=4, fig.width=6.5}
+vars_sig_13 <- results_m_13 %>% 
+  filter(fdr < 0.05) %>%
+  arrange(p.value) %>%
+  mutate_if(is.numeric, .funs = ~round(., digits=3)) %>% 
+  mutate(var_name=str_replace(variable, "_tr", "")) %>% 
+  left_join(., vars_summary_13, by = "var_name")
+
+for(i in 1:nrow(vars_sig_13)){
+  
+  predictor <- vars_sig_13 %>% 
+    slice(i) %>% 
+    select(variable) %>% 
+    pull(variable)
+  dataset <- vars_sig_13 %>% 
+    slice(i) %>% 
+    select(dataset) %>% 
+    pull(dataset)
+ 
+  if(dataset=="nhanesDesign_mec_df_13"){
+    s_design <- subset(svydesign(id = ~sdmvpsu,
+                                  strata  = ~sdmvstra,
+                                  weights = ~wtmec2yr,
+                                  nest    = TRUE,
+                                  data    = nhanesDesign_mec_df_13), inAnalysis==TRUE)
+  model1 <- svyglm(paste0("bmxbmi_cdc_sds ~ ridageyr + sex + indfmpir + ethnicity + smoker_home + ", predictor), data = nhanesDesign_mec_df_13, design=s_design)
+ 
+  
+  print(sjPlot::plot_model(model1, type = "pred", terms = c(predictor, "sex"), show.data = T) +
+    theme_minimal() + 
+    theme(legend.position = "bottom") +
+    labs(y="BMI sds", x=vars_sig_13[i, "summary"], title=NULL, caption="Predicted values - 2013-2014"))
+  }
+  
+  
+    if(dataset=="nhanesDesign_a2yr_df_13"){
+    s_design <- subset(svydesign(id = ~sdmvpsu,
+                                  strata  = ~sdmvstra,
+                                  weights = ~wtsa2yr,
+                                  nest    = TRUE,
+                                  data    = nhanesDesign_a2yr_df_13), inAnalysis==TRUE)
+  model1 <- svyglm(paste0("bmxbmi_cdc_sds ~ ridageyr + sex + indfmpir + ethnicity + smoker_home + ", predictor), data = nhanesDesign_a2yr_df_13, design=s_design)
+ 
+  
+  print(sjPlot::plot_model(model1, type = "pred", terms = c(predictor, "sex"), show.data = T) +
+    theme_minimal() + 
+    theme(legend.position = "bottom") +
+    labs(y="BMI sds", x=vars_sig_13[i, "summary"], title=NULL, caption="Predicted values - 2013-2014"))
+  }
+   rm(model1, s_design, predictor, dataset)
+}
+
+```
+
+# Variables significant in both datasets
+
+`r kable(sig_total)`
+
+# Exporing interactions between sex and the other ExWAS predictors (in the discovery and replication datasets)
+
+```{r S2-RegAnalysisR1-16, echo=FALSE, message=FALSE, warning=TRUE}
+
+# remove all objects 
+rm(list=(setdiff(ls(), c(grep("^nhanesDesign", names(.GlobalEnv), value = TRUE),
+                         grep("^nhanesTarget", names(.GlobalEnv), value = TRUE),
+                         "bmi_cat", "bmi_cont", "nutrition1", "vars",
+                         grep("^wt|Vars|_tr$",names(.GlobalEnv),value=TRUE),
+                         "nutr_corr_matrix2",
+                         "vars_summary_03", "vars_summary_13",
+                         "sig_total"))))
+
+sig_vars_lab <- sig_total %>% 
+  filter(str_detect(Section, "Laboratory")) %>%
+  pull(variable)
+
+# formulas
+formula_int<-"bmxbmi_cdc_sds ~ ridageyr + sex + indfmpir + ethnicity + smoker_home + value + value*sex"
+
+results_m_lab_cont03 <-nhanesDesign_mec_df_03 %>%
+  # selecting only the significant variables from the group of the laboratory variables
+  select(seqn, sdmvpsu, sdmvstra, wtmec2yr, ridageyr, sex, indfmpir, ethnicity, 
+         smoker_home, bmxbmi_cdc_sds, bmxbmi_cat_perc, all_of(sig_vars_lab), inAnalysis) %>%
+  pivot_longer(cols=all_of(sig_vars_lab), names_to = "variable", values_to = "value") %>% 
+  mutate(value=as.numeric(value)) %>%
+  group_by(variable) %>%
+  do(tidy(svyglm(formula_int, data = ., 
+                 design=subset(svydesign(id      = ~sdmvpsu,
+                                  strata  = ~sdmvstra,
+                                  weights = ~wtmec2yr,
+                                  nest    = TRUE,
+                                  data    = .), inAnalysis==TRUE)))) %>%
+  filter(term=="sexMale:value") %>% 
+  mutate(Section="Laboratory and Metals",
+         dataset="nhanesDesign_mec_df_03") %>%
+  ungroup() 
+
+sig_inter_vars_03 <- results_m_lab_cont03 %>%
+  filter(p.value <0.05) %>%
+  pull(variable)
+
+
+modFrame_interactions03 <- data.frame()
+
+for(i in 1:length(sig_inter_vars_03)){
+    model <- paste0("bmxbmi_cdc_sds ~ ridageyr + sex + indfmpir + ethnicity + smoker_home + ",
+                    sig_inter_vars_03[i], " + ", sig_inter_vars_03[i], "*sex")
+ # print(model)
+  
+  mod <- svyglm(model, design = nhanesTarget_mec_03)
+  modFrame <- tidy(mod)
+  modFrame$var_name <- str_replace(sig_inter_vars_03[i], pattern="_tr", replacement = "") 
+  modFrame <- modFrame %>% 
+  left_join(., vars_summary_03, by = "var_name")
+  
+  #print(modFrame)
+  
+  modFrame_interactions03 <- rbind(modFrame_interactions03, modFrame) 
+  rm(model, mod, modFrame)
+}
+
+
+results_m_lab_cont13 <-nhanesDesign_mec_df_13 %>%
+  # selecting only the contVarsLab_tr
+  select(seqn, sdmvpsu, sdmvstra, wtmec2yr, ridageyr, sex, indfmpir, ethnicity, 
+         smoker_home, bmxbmi_cdc_sds, bmxbmi_cat_perc, all_of(sig_vars_lab), 
+         inAnalysis) %>%
+  pivot_longer(cols=all_of(sig_vars_lab), names_to = "variable", values_to = "value") %>% 
+  mutate(value=as.numeric(value)) %>%
+  group_by(variable) %>%
+  do(tidy(svyglm(formula_int, data = ., 
+                 design=subset(svydesign(id      = ~sdmvpsu,
+                                  strata  = ~sdmvstra,
+                                  weights = ~wtmec2yr,
+                                  nest    = TRUE,
+                                  data    = .), inAnalysis==TRUE)))) %>%
+  filter(term=="sexMale:value") %>% 
+  mutate(Section="Laboratory",
+         dataset="nhanesDesign_mec_df_13") %>%
+  ungroup()
+
+sig_inter_vars_13 <- results_m_lab_cont13 %>%
+  filter(p.value <0.05) %>%
+  pull(variable)
+
+modFrame_interactions13 <- data.frame()
+
+for(i in 1:length(sig_inter_vars_13)){
+    model <- paste0("bmxbmi_cdc_sds ~ ridageyr + sex + indfmpir + ethnicity + smoker_home + ",
+                    sig_inter_vars_13[i], " + ", sig_inter_vars_13[i], "*sex")
+  #print(model)
+  
+  mod <- svyglm(model, design = nhanesTarget_mec_13)
+  modFrame <- tidy(mod)
+  modFrame$var_name <- str_replace(sig_inter_vars_13[i], pattern="_tr", replacement = "") 
+  modFrame <- modFrame %>% 
+  left_join(., vars_summary_13, by = "var_name")
+  
+  #print(modFrame)
+  
+  modFrame_interactions13 <- rbind(modFrame_interactions13, modFrame) 
+  rm(model, mod, modFrame)
+  
+}
+
+```
+
+Model details -- survey 2003-2004 using the interaction term
+ 
+`r modFrame_interactions03 %>% regulartable() %>% set_table_properties(layout = "autofit") %>% fontsize(size = 8, part = "body")`
+
+Model details -- survey 2013-2014 using the interaction term
+
+`r modFrame_interactions13 %>% regulartable() %>% set_table_properties(layout = "autofit") %>% fontsize(size = 8, part = "body")`
+
+### Focus on uric acid (dataset 2003-2004) and alanine aminotransferase (datasets 2003-2004 and 2013-2014)
+
+```{r S2-RegAnalysisR1-17, echo=FALSE, fig.height=7, fig.width=8.5, message=FALSE, warning=TRUE}
+
+uric_03_model <- svyglm("bmxbmi_cdc_sds ~ ridageyr + sex + indfmpir + ethnicity + smoker_home + lbdsuasi_tr + lbdsuasi_tr*sex", 
+                        design=nhanesTarget_mec_03)
+
+
+figure5 <- sjPlot::plot_model(uric_03_model, type = "pred", show.data = T, 
+                              terms = c("lbdsuasi_tr", "sex"), dot.size = 0.5) +
+    theme_minimal() + 
+    theme(legend.position = "bottom") +
+    labs(y="BMI sds", x="Uric Acid", title=NULL, caption="Predicted values for 2003-2004")
+
+figure5
+
+ggsave(figure5, device = "pdf", filename = "figures/figure5.pdf", dpi = 300, width = 5, height=4)
+ggsave(figure5, filename = "figures/figure5.png", dpi = 300, width = 5, height=4)
+
+alum_03_model <- svyglm("bmxbmi_cdc_sds ~ ridageyr + sex + indfmpir + ethnicity + smoker_home + lbxsatsi_tr + lbxsatsi_tr*sex", 
+                        design=nhanesTarget_mec_03)
+
+alum_13_model <- svyglm("bmxbmi_cdc_sds ~ ridageyr + sex + indfmpir + ethnicity + smoker_home + lbxsatsi_tr + lbxsatsi_tr*sex", 
+                        design=nhanesTarget_mec_13)
+
+
+figure6A <- sjPlot::plot_model(alum_03_model, type = "pred", 
+                               show.data = T, terms = c("lbxsatsi_tr", "sex"), dot.size = 0.5) +
+    theme_minimal() + 
+    theme(legend.position = "right") +
+    labs(y="BMI sds", x="Alanine aminotransferase", title="A. Predicted values for 2003-2004")
+
+figure6B <- sjPlot::plot_model(alum_13_model, type = "pred", show.data = T, terms = c("lbxsatsi_tr", "sex"), dot.size = 0.5) +
+    theme_minimal() + 
+    theme(legend.position = "right") +
+    labs(y="BMI sds", x="Alanine aminotransferase", title="B. Predicted values for 2013-2014")
+
+figure6 <- figure6A/figure6B
+
+figure6
+
+ggsave(figure6, device = "pdf", filename = "figures/figure6.pdf", dpi = 300, width=5)
+ggsave(figure6, filename = "figures/figure6.png", dpi = 300, width=5)
+```
+
+
+`r kable(tidy(uric_03_model))`
+
+`r kable(tidy(alum_03_model))`
+
+`r kable(tidy(alum_13_model))`
+
+
+# Session Information
+
+```{r S2-RegAnalysisR1-18}
+sessionInfo()
+```
+
+## References
+
+`r kable(report::cite_packages())`
+
